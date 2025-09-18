@@ -21,7 +21,7 @@ spring:
     enabled: false
 
 server:
-  port: 8080
+  port: ${PORT:8080}
   servlet:
     session:
       timeout: 10m

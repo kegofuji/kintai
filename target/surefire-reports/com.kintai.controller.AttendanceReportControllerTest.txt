@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.kintai.controller.AttendanceReportControllerTest
--------------------------------------------------------------------------------
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.180 s -- in com.kintai.controller.AttendanceReportControllerTest

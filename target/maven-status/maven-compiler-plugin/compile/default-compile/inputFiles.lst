@@ -7,6 +7,7 @@
 /Users/keigofujita/kintai/src/main/java/com/kintai/service/VacationService.java
 /Users/keigofujita/kintai/src/main/java/com/kintai/controller/AttendanceController.java
 /Users/keigofujita/kintai/src/main/java/com/kintai/service/AttendanceReportService.java
+/Users/keigofujita/kintai/src/main/java/com/kintai/controller/AdminController.java
 /Users/keigofujita/kintai/src/main/java/com/kintai/entity/VacationRequest.java
 /Users/keigofujita/kintai/src/main/java/com/kintai/entity/AttendanceRecord.java
 /Users/keigofujita/kintai/src/main/java/com/kintai/controller/VacationController.java
@@ -28,3 +29,4 @@
 /Users/keigofujita/kintai/src/main/java/com/kintai/dto/ClockOutRequest.java
 /Users/keigofujita/kintai/src/main/java/com/kintai/dto/ClockResponse.java
 /Users/keigofujita/kintai/src/main/java/com/kintai/entity/AttendanceStatus.java
+/Users/keigofujita/kintai/src/main/java/com/kintai/service/AdminService.java

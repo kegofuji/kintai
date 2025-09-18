@@ -32,6 +32,13 @@ public interface VacationRequestRepository extends JpaRepository<VacationRequest
     List<VacationRequest> findByEmployeeIdAndStatusOrderByCreatedAtDesc(Long employeeId, VacationStatus status);
     
     /**
+     * ステータスで有給申請を検索
+     * @param status ステータス
+     * @return 該当ステータスの有給申請リスト
+     */
+    List<VacationRequest> findByStatusOrderByCreatedAtDesc(VacationStatus status);
+    
+    /**
      * 日付範囲での重複申請チェック
      * @param employeeId 従業員ID
      * @param startDate 開始日
