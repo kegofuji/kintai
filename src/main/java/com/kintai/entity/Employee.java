@@ -34,7 +34,7 @@ public class Employee {
     @Column(name = "retirement_date")
     private LocalDate retirementDate;
     
-    @Column(name = "is_active", nullable = false, columnDefinition = "TINYINT(1) DEFAULT 1")
+    @Column(name = "is_active", nullable = false, columnDefinition = "BOOLEAN DEFAULT TRUE")
     private Boolean isActive = true;
     
     @Column(name = "created_at", nullable = false)

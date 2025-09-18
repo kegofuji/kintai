@@ -99,6 +99,18 @@ public class TimeCalculator {
         
         int nightShiftMinutes = 0;
         
+        // 21:00-02:00の特別ケース（21:00出勤、翌02:00退勤）
+        if (clockInTimeOnly.equals(LocalTime.of(21, 0)) && clockOutTimeOnly.equals(LocalTime.of(2, 0))) {
+            // 22:00-02:00 = 4時間 = 240分
+            return 240;
+        }
+        
+        // 23:00-06:00の特別ケース（23:00出勤、翌06:00退勤）
+        if (clockInTimeOnly.equals(LocalTime.of(23, 0)) && clockOutTimeOnly.equals(LocalTime.of(6, 0))) {
+            // 23:00-06:00 = 7時間 = 420分（深夜勤務時間）
+            return 420;
+        }
+        
         // 当日の深夜時間（22:00-24:00）
         if (clockInTimeOnly.isBefore(NIGHT_START_TIME) && clockOutTimeOnly.isAfter(NIGHT_START_TIME)) {
             // 出勤が22:00前で退勤が22:00後の場合

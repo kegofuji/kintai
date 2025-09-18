@@ -3,6 +3,7 @@ package com.kintai.service;
 import com.kintai.dto.ClockInRequest;
 import com.kintai.dto.ClockOutRequest;
 import com.kintai.dto.ClockResponse;
+import com.kintai.dto.MonthlySubmitRequest;
 import com.kintai.entity.AttendanceRecord;
 import com.kintai.entity.AttendanceStatus;
 import com.kintai.entity.Employee;
@@ -16,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * 勤怠管理サービス
@@ -236,5 +240,89 @@ public class AttendanceService {
         }
         
         return message.toString();
+    }
+    
+    /**
+     * 月末申請処理
+     * @param request 月末申請リクエスト
+     * @return 申請レスポンス
+     */
+    public ClockResponse submitMonthly(MonthlySubmitRequest request) {
+        try {
+            Long employeeId = request.getEmployeeId();
+            String yearMonth = request.getYearMonth();
+            
+            // 1. 従業員存在チェック
+            Employee employee = employeeRepository.findByEmployeeId(employeeId)
+                    .orElseThrow(() -> new AttendanceException(
+                            AttendanceException.EMPLOYEE_NOT_FOUND, 
+                            "従業員が見つかりません"));
+            
+            // 2. 退職者チェック
+            if (employee.isRetired()) {
+                throw new AttendanceException(
+                        AttendanceException.RETIRED_EMPLOYEE, 
+                        "退職済みの従業員です");
+            }
+            
+            // 3. 未来月申請チェック
+            YearMonth currentMonth = YearMonth.now();
+            YearMonth requestMonth = YearMonth.parse(yearMonth, DateTimeFormatter.ofPattern("yyyy-MM"));
+            if (requestMonth.isAfter(currentMonth)) {
+                throw new AttendanceException(
+                        "FUTURE_MONTH_NOT_ALLOWED", 
+                        "未来月の申請はできません");
+            }
+            
+            // 4. 該当月の勤怠記録を取得
+            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, yearMonth);
+            
+            if (records.isEmpty()) {
+                throw new AttendanceException(
+                        "NO_RECORDS_FOUND", 
+                        "該当月の勤怠記録が見つかりません");
+            }
+            
+            // 5. 既に確定済みかチェック
+            boolean alreadyFixed = records.stream().anyMatch(AttendanceRecord::getAttendanceFixedFlag);
+            if (alreadyFixed) {
+                throw new AttendanceException(
+                        "ALREADY_SUBMITTED", 
+                        "既に申請済みです");
+            }
+            
+            // 6. 未打刻チェック（全営業日で出勤・退勤の両方が打刻されているか）
+            List<AttendanceRecord> incompleteRecords = records.stream()
+                    .filter(record -> record.getClockInTime() == null || record.getClockOutTime() == null)
+                    .toList();
+            
+            if (!incompleteRecords.isEmpty()) {
+                throw new AttendanceException(
+                        "INCOMPLETE_ATTENDANCE", 
+                        "未打刻の日があります");
+            }
+            
+            // 7. 勤怠記録を確定状態に更新
+            for (AttendanceRecord record : records) {
+                record.setAttendanceFixedFlag(true);
+            }
+            attendanceRecordRepository.saveAll(records);
+            
+            // 8. レスポンス作成
+            ClockResponse.MonthlySubmitData data = new ClockResponse.MonthlySubmitData(
+                    employeeId, 
+                    yearMonth, 
+                    records.size()
+            );
+            
+            String message = String.format("%sの勤怠を申請しました", yearMonth);
+            return new ClockResponse(true, message, data);
+            
+        } catch (AttendanceException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new AttendanceException("INTERNAL_ERROR", "内部エラーが発生しました: " + e.getMessage());
+        }
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -47,4 +48,13 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
      * @return 退勤済みの場合true
      */
     boolean existsByEmployeeIdAndAttendanceDateAndClockOutTimeIsNotNull(Long employeeId, LocalDate attendanceDate);
+    
+    /**
+     * 従業員IDと年月で勤怠記録を検索
+     * @param employeeId 従業員ID
+     * @param yearMonth 年月（yyyy-MM形式）
+     * @return 該当月の勤怠記録リスト
+     */
+    @Query("SELECT ar FROM AttendanceRecord ar WHERE ar.employeeId = :empId AND FUNCTION('DATE_FORMAT', ar.attendanceDate, '%Y-%m') = :yearMonth")
+    List<AttendanceRecord> findByEmployeeAndMonth(@Param("empId") Long empId, @Param("yearMonth") String yearMonth);
 }

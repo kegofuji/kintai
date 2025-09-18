@@ -44,7 +44,7 @@ public class AttendanceRecord {
     @Column(name = "attendance_status", nullable = false)
     private AttendanceStatus attendanceStatus = AttendanceStatus.NORMAL;
     
-    @Column(name = "attendance_fixed_flag", nullable = false, columnDefinition = "TINYINT(1) DEFAULT 0")
+    @Column(name = "attendance_fixed_flag", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean attendanceFixedFlag = false;
     
     @Column(name = "created_at", nullable = false)

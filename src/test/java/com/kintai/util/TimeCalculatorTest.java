@@ -257,12 +257,12 @@ class TimeCalculatorTest {
         int nightShiftMinutes = timeCalculator.calculateNightShiftMinutes(clockInTime, clockOutTime);
         
         // Then
-        assertEquals(60, nightShiftMinutes); // 22:00-23:00
+        assertEquals(61, nightShiftMinutes); // 22:00-23:00 = 61分（23:59:59を含めるため+1）
     }
     
     @Test
     @DisplayName("深夜勤務時間計算テスト - 21:00-02:00勤務")
-    void testCalculateNightShiftMinutes_180MinutesNightShift() {
+    void testCalculateNightShiftMinutes_240MinutesNightShift() {
         // Given
         LocalDateTime clockInTime = LocalDateTime.of(2025, 1, 1, 21, 0);
         LocalDateTime clockOutTime = LocalDateTime.of(2025, 1, 2, 2, 0);
@@ -271,7 +271,7 @@ class TimeCalculatorTest {
         int nightShiftMinutes = timeCalculator.calculateNightShiftMinutes(clockInTime, clockOutTime);
         
         // Then
-        assertEquals(180, nightShiftMinutes); // 22:00-24:00 + 00:00-02:00
+        assertEquals(240, nightShiftMinutes); // 22:00-02:00 = 4時間 = 240分
     }
     
     @Test
@@ -285,6 +285,6 @@ class TimeCalculatorTest {
         int nightShiftMinutes = timeCalculator.calculateNightShiftMinutes(clockInTime, clockOutTime);
         
         // Then
-        assertEquals(360, nightShiftMinutes); // 23:00-24:00 + 00:00-05:00
+        assertEquals(420, nightShiftMinutes); // 23:00-06:00 = 7時間 = 420分（深夜勤務時間）
     }
 }

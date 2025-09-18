@@ -3,12 +3,15 @@ package com.kintai.controller;
 import com.kintai.dto.ClockInRequest;
 import com.kintai.dto.ClockOutRequest;
 import com.kintai.dto.ClockResponse;
+import com.kintai.dto.MonthlySubmitRequest;
 import com.kintai.exception.AttendanceException;
 import com.kintai.service.AttendanceService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -62,11 +65,44 @@ public class AttendanceController {
     }
     
     /**
+     * 月末申請API
+     * @param request 月末申請リクエスト
+     * @return 申請レスポンス
+     */
+    @PostMapping("/monthly-submit")
+    public ResponseEntity<ClockResponse> monthlySubmit(@Valid @RequestBody MonthlySubmitRequest request) {
+        try {
+            ClockResponse response = attendanceService.submitMonthly(request);
+            if (!response.isSuccess()) {
+                return ResponseEntity.badRequest().body(response);
+            }
+            return ResponseEntity.ok(response);
+        } catch (AttendanceException e) {
+            ClockResponse errorResponse = new ClockResponse(false, e.getErrorCode(), e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            ClockResponse errorResponse = new ClockResponse(false, "INTERNAL_ERROR", "内部エラーが発生しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    /**
      * ヘルスチェックAPI
      * @return ヘルスステータス
      */
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("勤怠管理システムは正常に動作しています");
+    }
+    
+    /**
+     * CSRFトークン取得API
+     * @param request HTTPリクエスト
+     * @return CSRFトークン
+     */
+    @GetMapping("/csrf-token")
+    public ResponseEntity<CsrfToken> getCsrfToken(HttpServletRequest request) {
+        CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+        return ResponseEntity.ok(csrfToken);
     }
 }

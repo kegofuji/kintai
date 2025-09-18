@@ -1,3 +1,9 @@
-com/kintai/util/TimeCalculatorTest.class
+com/kintai/controller/AuthControllerTest.class
+com/kintai/config/SecurityConfigTest.class
 com/kintai/controller/AttendanceControllerTest.class
+com/kintai/config/TestSecurityConfig.class
+com/kintai/service/VacationServiceTest.class
+com/kintai/util/TimeCalculatorTest.class
+com/kintai/controller/MonthlySubmitControllerTest.class
 com/kintai/service/AttendanceServiceTest.class
+com/kintai/controller/VacationControllerTest.class

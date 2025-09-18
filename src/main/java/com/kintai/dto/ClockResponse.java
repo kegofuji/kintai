@@ -10,7 +10,7 @@ public class ClockResponse {
     private boolean success;
     private String message;
     private String errorCode;
-    private ClockData data;
+    private Object data;
     
     // デフォルトコンストラクタ
     public ClockResponse() {
@@ -18,6 +18,13 @@ public class ClockResponse {
     
     // 成功レスポンス用コンストラクタ
     public ClockResponse(boolean success, String message, ClockData data) {
+        this.success = success;
+        this.message = message;
+        this.data = data;
+    }
+    
+    // 月末申請成功レスポンス用コンストラクタ
+    public ClockResponse(boolean success, String message, MonthlySubmitData data) {
         this.success = success;
         this.message = message;
         this.data = data;
@@ -55,11 +62,11 @@ public class ClockResponse {
         this.errorCode = errorCode;
     }
     
-    public ClockData getData() {
+    public Object getData() {
         return data;
     }
     
-    public void setData(ClockData data) {
+    public void setData(Object data) {
         this.data = data;
     }
     
@@ -146,6 +153,51 @@ public class ClockResponse {
         
         public void setNightShiftMinutes(Integer nightShiftMinutes) {
             this.nightShiftMinutes = nightShiftMinutes;
+        }
+    }
+    
+    /**
+     * 月末申請データ内部クラス
+     */
+    public static class MonthlySubmitData {
+        private Long employeeId;
+        private String yearMonth;
+        private Integer fixedCount;
+        
+        // デフォルトコンストラクタ
+        public MonthlySubmitData() {
+        }
+        
+        // コンストラクタ
+        public MonthlySubmitData(Long employeeId, String yearMonth, Integer fixedCount) {
+            this.employeeId = employeeId;
+            this.yearMonth = yearMonth;
+            this.fixedCount = fixedCount;
+        }
+        
+        // ゲッター・セッター
+        public Long getEmployeeId() {
+            return employeeId;
+        }
+        
+        public void setEmployeeId(Long employeeId) {
+            this.employeeId = employeeId;
+        }
+        
+        public String getYearMonth() {
+            return yearMonth;
+        }
+        
+        public void setYearMonth(String yearMonth) {
+            this.yearMonth = yearMonth;
+        }
+        
+        public Integer getFixedCount() {
+            return fixedCount;
+        }
+        
+        public void setFixedCount(Integer fixedCount) {
+            this.fixedCount = fixedCount;
         }
     }
 }
