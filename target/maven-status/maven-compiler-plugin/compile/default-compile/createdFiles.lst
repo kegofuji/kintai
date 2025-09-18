@@ -1,8 +1,6 @@
-com/kintai/util/pdf/PdfGenerator.class
 com/kintai/repository/EmployeeRepository.class
 com/kintai/entity/Employee.class
 com/kintai/exception/VacationException.class
-com/kintai/controller/DocumentationController.class
 com/kintai/controller/VacationController.class
 com/kintai/service/AuthService.class
 com/kintai/exception/AttendanceException.class
@@ -12,6 +10,7 @@ com/kintai/dto/VacationRequestDto.class
 com/kintai/dto/ClockResponse.class
 com/kintai/entity/AttendanceStatus.class
 com/kintai/controller/VacationController$StatusUpdateRequest.class
+com/kintai/dto/AttendanceReportDto$1.class
 com/kintai/dto/ClockResponse$MonthlySubmitData.class
 com/kintai/KintaiApplication.class
 com/kintai/util/TimeCalculator.class

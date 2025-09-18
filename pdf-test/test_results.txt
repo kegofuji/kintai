@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.5, pytest-8.4.2, pluggy-1.6.0 -- /Users/keigofujita/kintai/pdf-test/venv/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/keigofujita/kintai/pdf-test
+collecting ... collected 18 items
+
+test_pdf_validation.py::TestPDFValidator::test_valid_pdf_validation PASSED [  5%]
+test_pdf_validation.py::TestPDFValidator::test_no_data_pdf_validation PASSED [ 11%]
+test_pdf_validation.py::TestPDFValidator::test_invalid_format_pdf_validation PASSED [ 16%]
+test_pdf_validation.py::TestPDFValidator::test_missing_header_pdf_validation PASSED [ 22%]
+test_pdf_validation.py::TestPDFValidator::test_missing_footer_pdf_validation PASSED [ 27%]
+test_pdf_validation.py::TestPDFValidator::test_nonexistent_file_validation PASSED [ 33%]
+test_pdf_validation.py::TestPDFValidator::test_check_header_kintai_system PASSED [ 38%]
+test_pdf_validation.py::TestPDFValidator::test_check_year_month_format PASSED [ 44%]
+test_pdf_validation.py::TestPDFValidator::test_check_employee_info PASSED [ 50%]
+test_pdf_validation.py::TestPDFValidator::test_check_attendance_data PASSED [ 55%]
+test_pdf_validation.py::TestPDFValidator::test_check_footer_approval PASSED [ 61%]
+test_pdf_validation.py::TestPDFValidator::test_check_footer_page_number PASSED [ 66%]
+test_pdf_validation.py::TestPDFValidator::test_check_no_data_message PASSED [ 72%]
+test_pdf_validation.py::TestPDFGenerator::test_generate_valid_pdf PASSED [ 77%]
+test_pdf_validation.py::TestPDFGenerator::test_generate_no_data_pdf PASSED [ 83%]
+test_pdf_validation.py::TestPDFGenerator::test_generate_invalid_format_pdf PASSED [ 88%]
+test_pdf_validation.py::TestPDFGenerator::test_generate_missing_header_pdf PASSED [ 94%]
+test_pdf_validation.py::TestPDFGenerator::test_generate_missing_footer_pdf PASSED [100%]
+
+=============================== warnings summary ===============================
+venv/lib/python3.13/site-packages/PyPDF2/__init__.py:21
+  /Users/keigofujita/kintai/pdf-test/venv/lib/python3.13/site-packages/PyPDF2/__init__.py:21: DeprecationWarning: PyPDF2 is deprecated. Please move to the pypdf library instead.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 18 passed, 1 warning in 0.10s =========================

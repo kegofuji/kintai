@@ -1,8 +1,10 @@
 /Users/keigofujita/kintai/src/test/java/com/kintai/controller/AuthControllerTest.java
 /Users/keigofujita/kintai/src/test/java/com/kintai/controller/VacationControllerTest.java
 /Users/keigofujita/kintai/src/test/java/com/kintai/config/TestSecurityConfig.java
+/Users/keigofujita/kintai/src/test/java/com/kintai/controller/AttendanceReportControllerTest.java
 /Users/keigofujita/kintai/src/test/java/com/kintai/util/TimeCalculatorTest.java
 /Users/keigofujita/kintai/src/test/java/com/kintai/config/SecurityConfigTest.java
+/Users/keigofujita/kintai/src/test/java/com/kintai/service/AttendanceReportServiceTest.java
 /Users/keigofujita/kintai/src/test/java/com/kintai/controller/MonthlySubmitControllerTest.java
 /Users/keigofujita/kintai/src/test/java/com/kintai/controller/AttendanceControllerTest.java
 /Users/keigofujita/kintai/src/test/java/com/kintai/service/AttendanceServiceTest.java

@@ -12,6 +12,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -50,13 +52,20 @@ public class AuthController {
                 session.setAttribute("role", user.getRole().name());
                 session.setAttribute("employeeId", user.getEmployeeId());
                 
-                // Spring Securityの認証コンテキストに設定
+                // Spring Securityの認証コンテキストを作成
                 Authentication authentication = new UsernamePasswordAuthenticationToken(
-                    user.getUsername(),
+                    user,
                     user.getPassword(),
-                    Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
+                    user.getAuthorities()
                 );
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                
+                // SecurityContextを作成して設定
+                SecurityContext context = SecurityContextHolder.createEmptyContext();
+                context.setAuthentication(authentication);
+                SecurityContextHolder.setContext(context);
+                
+                // セッションにSecurityContextを保存
+                session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
                 
                 // レスポンス作成
                 Map<String, Object> response = new HashMap<>();
