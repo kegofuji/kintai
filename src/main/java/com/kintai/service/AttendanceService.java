@@ -26,7 +26,7 @@ import java.util.List;
  */
 @Service
 @Transactional
-public class AttendanceService {
+public class AttendanceService { {
     
     @Autowired
     private AttendanceRecordRepository attendanceRecordRepository;
