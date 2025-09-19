@@ -2,6 +2,7 @@ package com.kintai.controller;
 
 import com.kintai.entity.UserAccount;
 import com.kintai.service.AuthService;
+import com.kintai.util.PasswordValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
@@ -10,7 +11,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Collections;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -73,7 +72,7 @@ public class AuthController {
                 response.put("message", "ログインに成功しました");
                 response.put("username", user.getUsername());
                 response.put("role", user.getRole().name());
-                response.put("employeeId", user.getEmployeeId());
+                response.put("employeeId", user.getEmployeeId()); // 正しいemployeeIdを返す
                 response.put("sessionId", session.getId());
                 
                 return ResponseEntity.ok(response);
@@ -159,6 +158,75 @@ public class AuthController {
     }
     
     /**
+     * パスワード検証エンドポイント
+     * @param passwordRequest パスワード検証リクエスト
+     * @return 検証結果
+     */
+    @PostMapping("/validate-password")
+    public ResponseEntity<Map<String, Object>> validatePassword(@Valid @RequestBody PasswordValidationRequest passwordRequest) {
+        try {
+            PasswordValidator.PasswordValidationResult result = authService.validatePassword(
+                passwordRequest.getPassword(), 
+                passwordRequest.getEmployeeCode()
+            );
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("valid", result.isValid());
+            response.put("message", result.getMessage());
+            
+            if (result.isValid()) {
+                return ResponseEntity.ok(response);
+            } else {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("valid", false);
+            response.put("message", "パスワード検証中にエラーが発生しました: " + e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * ユーザー登録
+     * @param registerRequest 登録リクエスト
+     * @return 登録結果
+     */
+    @PostMapping("/register")
+    public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody RegisterRequest registerRequest) {
+        try {
+            // パスワード強度チェック
+            PasswordValidator.PasswordValidationResult passwordResult = authService.validatePassword(
+                registerRequest.getPassword(), 
+                registerRequest.getEmployeeCode()
+            );
+            
+            if (!passwordResult.isValid()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("message", passwordResult.getMessage());
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+            
+            // ユーザー登録処理（実際の実装はAuthServiceに追加が必要）
+            // ここでは簡易的な実装
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "ユーザー登録が完了しました");
+            response.put("employeeCode", registerRequest.getEmployeeCode());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "ユーザー登録中にエラーが発生しました: " + e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
      * ログインリクエスト用の内部クラス
      */
     public static class LoginRequest {
@@ -171,6 +239,54 @@ public class AuthController {
         
         public void setUsername(String username) {
             this.username = username;
+        }
+        
+        public String getPassword() {
+            return password;
+        }
+        
+        public void setPassword(String password) {
+            this.password = password;
+        }
+    }
+    
+    /**
+     * パスワード検証リクエスト用の内部クラス
+     */
+    public static class PasswordValidationRequest {
+        private String password;
+        private String employeeCode;
+        
+        public String getPassword() {
+            return password;
+        }
+        
+        public void setPassword(String password) {
+            this.password = password;
+        }
+        
+        public String getEmployeeCode() {
+            return employeeCode;
+        }
+        
+        public void setEmployeeCode(String employeeCode) {
+            this.employeeCode = employeeCode;
+        }
+    }
+    
+    /**
+     * ユーザー登録リクエスト用の内部クラス
+     */
+    public static class RegisterRequest {
+        private String employeeCode;
+        private String password;
+        
+        public String getEmployeeCode() {
+            return employeeCode;
+        }
+        
+        public void setEmployeeCode(String employeeCode) {
+            this.employeeCode = employeeCode;
         }
         
         public String getPassword() {

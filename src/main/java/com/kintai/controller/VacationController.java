@@ -15,6 +15,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -99,9 +101,15 @@ public class VacationController {
      * @return CSRFトークン
      */
     @GetMapping("/csrf-token")
-    public ResponseEntity<CsrfToken> getCsrfToken(HttpServletRequest request) {
+    public ResponseEntity<Map<String, String>> getCsrfToken(HttpServletRequest request) {
         CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
-        return ResponseEntity.ok(csrfToken);
+        Map<String, String> tokenMap = new HashMap<>();
+        if (csrfToken != null) {
+            tokenMap.put("token", csrfToken.getToken());
+        } else {
+            tokenMap.put("token", "");
+        }
+        return ResponseEntity.ok(tokenMap);
     }
     
     /**

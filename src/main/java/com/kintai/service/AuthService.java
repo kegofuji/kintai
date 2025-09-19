@@ -2,6 +2,7 @@ package com.kintai.service;
 
 import com.kintai.entity.UserAccount;
 import com.kintai.repository.UserAccountRepository;
+import com.kintai.util.PasswordValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,9 @@ public class AuthService {
     
     @Autowired
     private PasswordEncoder passwordEncoder;
+    
+    @Autowired
+    private PasswordValidator passwordValidator;
     
     /**
      * ユーザー認証
@@ -61,5 +65,24 @@ public class AuthService {
      */
     public String encodePassword(String rawPassword) {
         return passwordEncoder.encode(rawPassword);
+    }
+    
+    /**
+     * パスワードの強度を検証
+     * @param password 検証するパスワード
+     * @param employeeCode 社員コード（重複チェック用）
+     * @return 検証結果
+     */
+    public PasswordValidator.PasswordValidationResult validatePassword(String password, String employeeCode) {
+        return passwordValidator.validate(password, employeeCode);
+    }
+    
+    /**
+     * パスワードの強度を検証（社員コードなし）
+     * @param password 検証するパスワード
+     * @return 検証結果
+     */
+    public PasswordValidator.PasswordValidationResult validatePassword(String password) {
+        return passwordValidator.validate(password, null);
     }
 }

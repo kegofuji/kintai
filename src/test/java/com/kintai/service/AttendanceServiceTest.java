@@ -6,9 +6,13 @@ import com.kintai.dto.ClockResponse;
 import com.kintai.dto.MonthlySubmitRequest;
 import com.kintai.entity.AttendanceRecord;
 import com.kintai.entity.Employee;
+import com.kintai.entity.SubmissionStatus;
+import com.kintai.entity.VacationRequest;
+import com.kintai.entity.VacationStatus;
 import com.kintai.exception.AttendanceException;
 import com.kintai.repository.AttendanceRecordRepository;
 import com.kintai.repository.EmployeeRepository;
+import com.kintai.repository.VacationRequestRepository;
 import com.kintai.util.TimeCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +44,9 @@ class AttendanceServiceTest {
     
     @Mock
     private TimeCalculator timeCalculator;
+    
+    @Mock
+    private VacationRequestRepository vacationRequestRepository;
     
     @InjectMocks
     private AttendanceService attendanceService;
@@ -124,6 +131,64 @@ class AttendanceServiceTest {
         
         assertEquals(AttendanceException.RETIRED_EMPLOYEE, exception.getErrorCode());
         assertEquals("退職済みの従業員です", exception.getMessage());
+    }
+    
+    @Test
+    @DisplayName("今日の勤怠状況取得テスト")
+    void testGetTodayAttendance() {
+        // Given
+        Long employeeId = 1L;
+        LocalDate today = LocalDate.now();
+        AttendanceRecord record = new AttendanceRecord(employeeId, today);
+        record.setClockInTime(LocalDateTime.now().withHour(9).withMinute(0));
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeIdAndAttendanceDate(employeeId, today)).thenReturn(Optional.of(record));
+        
+        // When
+        ClockResponse response = attendanceService.getTodayAttendance(employeeId);
+        
+        // Then
+        assertTrue(response.isSuccess());
+        assertEquals("今日の勤怠状況を取得しました", response.getMessage());
+        assertNotNull(response.getData());
+        assertTrue(response.getData() instanceof ClockResponse.ClockData);
+    }
+    
+    @Test
+    @DisplayName("今日の勤怠状況取得テスト - 記録なし")
+    void testGetTodayAttendance_NoRecord() {
+        // Given
+        Long employeeId = 1L;
+        LocalDate today = LocalDate.now();
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeIdAndAttendanceDate(employeeId, today)).thenReturn(Optional.empty());
+        
+        // When
+        ClockResponse response = attendanceService.getTodayAttendance(employeeId);
+        
+        // Then
+        assertTrue(response.isSuccess());
+        assertEquals("今日の勤怠記録はありません", response.getMessage());
+        assertNull(response.getData());
+    }
+    
+    @Test
+    @DisplayName("今日の勤怠状況取得テスト - 従業員なし")
+    void testGetTodayAttendance_EmployeeNotFound() {
+        // Given
+        Long employeeId = 999L;
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.empty());
+        
+        // When & Then
+        AttendanceException exception = assertThrows(AttendanceException.class, () -> {
+            attendanceService.getTodayAttendance(employeeId);
+        });
+        
+        assertEquals(AttendanceException.EMPLOYEE_NOT_FOUND, exception.getErrorCode());
+        assertEquals("従業員が見つかりません", exception.getMessage());
     }
     
     @Test
@@ -303,7 +368,7 @@ class AttendanceServiceTest {
         List<AttendanceRecord> records = Arrays.asList(record1, record2);
         
         when(employeeRepository.findByEmployeeId(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2025-01")).thenReturn(records);
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2025, 1)).thenReturn(records);
         when(attendanceRecordRepository.saveAll(anyList())).thenReturn(records);
         
         // When
@@ -337,7 +402,7 @@ class AttendanceServiceTest {
         List<AttendanceRecord> records = Arrays.asList(record1);
         
         when(employeeRepository.findByEmployeeId(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2025-01")).thenReturn(records);
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2025, 1)).thenReturn(records);
         
         // When & Then
         AttendanceException exception = assertThrows(AttendanceException.class, () -> {
@@ -380,7 +445,7 @@ class AttendanceServiceTest {
         List<AttendanceRecord> records = Arrays.asList(record1);
         
         when(employeeRepository.findByEmployeeId(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2025-01")).thenReturn(records);
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2025, 1)).thenReturn(records);
         
         // When & Then
         AttendanceException exception = assertThrows(AttendanceException.class, () -> {
@@ -398,7 +463,7 @@ class AttendanceServiceTest {
         MonthlySubmitRequest request = new MonthlySubmitRequest(1L, "2025-01");
         
         when(employeeRepository.findByEmployeeId(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2025-01")).thenReturn(Arrays.asList());
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2025, 1)).thenReturn(Arrays.asList());
         
         // When & Then
         AttendanceException exception = assertThrows(AttendanceException.class, () -> {
@@ -407,5 +472,139 @@ class AttendanceServiceTest {
         
         assertEquals("NO_RECORDS_FOUND", exception.getErrorCode());
         assertEquals("該当月の勤怠記録が見つかりません", exception.getMessage());
+    }
+    
+    @Test
+    @DisplayName("月末申請エラーテスト - 未承認有給申請あり")
+    void testSubmitMonthly_PendingVacationRequests() {
+        // Given
+        MonthlySubmitRequest request = new MonthlySubmitRequest(1L, "2025-01");
+        
+        // 完全な勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setAttendanceFixedFlag(false);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        // 未承認の有給申請を作成
+        VacationRequest vacationRequest = new VacationRequest(1L, LocalDate.of(2025, 1, 15), LocalDate.of(2025, 1, 15), "体調不良");
+        vacationRequest.setStatus(VacationStatus.PENDING);
+        
+        when(employeeRepository.findByEmployeeId(1L)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2025, 1)).thenReturn(records);
+        when(vacationRequestRepository.findPendingVacationRequestsInPeriod(1L, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 31)))
+                .thenReturn(Arrays.asList(vacationRequest));
+        
+        // When & Then
+        AttendanceException exception = assertThrows(AttendanceException.class, () -> {
+            attendanceService.submitMonthly(request);
+        });
+        
+        assertEquals("PENDING_VACATION_REQUESTS", exception.getErrorCode());
+        assertEquals("未承認の有給申請があります", exception.getMessage());
+    }
+    
+    @Test
+    @DisplayName("月末申請成功テスト - 未承認有給申請なし")
+    void testSubmitMonthly_Success_NoPendingVacationRequests() {
+        // Given
+        MonthlySubmitRequest request = new MonthlySubmitRequest(1L, "2025-01");
+        
+        // 完全な勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setAttendanceFixedFlag(false);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        when(employeeRepository.findByEmployeeId(1L)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2025, 1)).thenReturn(records);
+        when(vacationRequestRepository.findPendingVacationRequestsInPeriod(1L, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 31)))
+                .thenReturn(Arrays.asList()); // 未承認申請なし
+        when(attendanceRecordRepository.saveAll(anyList())).thenReturn(records);
+        
+        // When
+        ClockResponse response = attendanceService.submitMonthly(request);
+        
+        // Then
+        assertTrue(response.isSuccess());
+        assertEquals("2025-01の勤怠を申請しました", response.getMessage());
+        assertNotNull(response.getData());
+        assertTrue(response.getData() instanceof ClockResponse.MonthlySubmitData);
+        ClockResponse.MonthlySubmitData monthlyData = (ClockResponse.MonthlySubmitData) response.getData();
+        assertEquals(1L, monthlyData.getEmployeeId());
+        assertEquals("2025-01", monthlyData.getYearMonth());
+        assertEquals(1, monthlyData.getFixedCount());
+        
+        // submission_statusがSUBMITTEDに更新されることを確認
+        verify(attendanceRecordRepository).saveAll(anyList());
+    }
+    
+    @Test
+    @DisplayName("月末申請承認成功テスト")
+    void testApproveMonthlySubmission_Success() {
+        // Given
+        Long employeeId = 1L;
+        String yearMonth = "2025-01";
+        
+        // 申請済みの勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setSubmissionStatus(SubmissionStatus.SUBMITTED);
+        record1.setAttendanceFixedFlag(false);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(employeeId, 2025, 1)).thenReturn(records);
+        when(attendanceRecordRepository.saveAll(anyList())).thenReturn(records);
+        
+        // When
+        ClockResponse response = attendanceService.approveMonthlySubmission(employeeId, yearMonth);
+        
+        // Then
+        assertTrue(response.isSuccess());
+        assertEquals("2025-01の勤怠を承認しました", response.getMessage());
+        assertNotNull(response.getData());
+        assertTrue(response.getData() instanceof ClockResponse.MonthlySubmitData);
+        ClockResponse.MonthlySubmitData monthlyData = (ClockResponse.MonthlySubmitData) response.getData();
+        assertEquals(employeeId, monthlyData.getEmployeeId());
+        assertEquals(yearMonth, monthlyData.getYearMonth());
+        assertEquals(1, monthlyData.getFixedCount());
+        
+        // attendance_fixed_flagとsubmission_statusが更新されることを確認
+        verify(attendanceRecordRepository).saveAll(anyList());
+    }
+    
+    @Test
+    @DisplayName("月末申請承認エラーテスト - 申請されていない")
+    void testApproveMonthlySubmission_NotSubmitted() {
+        // Given
+        Long employeeId = 1L;
+        String yearMonth = "2025-01";
+        
+        // 未申請の勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setSubmissionStatus(SubmissionStatus.NOT_SUBMITTED);
+        record1.setAttendanceFixedFlag(false);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(employeeId, 2025, 1)).thenReturn(records);
+        
+        // When & Then
+        AttendanceException exception = assertThrows(AttendanceException.class, () -> {
+            attendanceService.approveMonthlySubmission(employeeId, yearMonth);
+        });
+        
+        assertEquals("NOT_SUBMITTED", exception.getErrorCode());
+        assertEquals("申請されていません", exception.getMessage());
     }
 }

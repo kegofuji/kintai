@@ -7,12 +7,18 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-        }
+        /* カスタムスタイル */
         .main-container {
             display: none;
+        }
+        .screen-container {
+            display: none;
+        }
+        .screen-container.active {
+            display: block;
+        }
+        .navbar-brand {
+            font-weight: bold;
         }
         .attendance-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -38,13 +44,141 @@
             max-height: 400px;
             overflow-y: auto;
         }
-        .navbar-brand {
-            font-weight: bold;
-        }
         .user-info {
             color: #6c757d;
             font-size: 0.9rem;
         }
+        .password-strength-weak {
+            background-color: #dc3545 !important;
+            color: white !important;
+        }
+        .password-strength-medium {
+            background-color: #fd7e14 !important;
+            color: white !important;
+        }
+        .password-strength-strong {
+            background-color: #198754 !important;
+            color: white !important;
+        }
+        .password-requirement {
+            margin-bottom: 2px;
+        }
+        .password-requirement.valid {
+            color: #198754;
+        }
+        .password-requirement.invalid {
+            color: #dc3545;
+        }
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+        }
+        .admin-menu {
+            display: none;
+        }
+        .admin-menu.show {
+            display: block;
+        }
+        
+        /* カレンダースタイル */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background-color: #dee2e6;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .calendar-day {
+            background-color: white;
+            min-height: 100px;
+            padding: 8px;
+            border: 1px solid #dee2e6;
+            position: relative;
+            transition: background-color 0.2s ease;
+        }
+        
+        .calendar-day.other-month {
+            background-color: #f8f9fa;
+            color: #6c757d;
+        }
+        
+        .calendar-day.today {
+            background-color: #e3f2fd;
+            border: 2px solid #2196f3;
+            font-weight: bold;
+        }
+        
+        .calendar-day.weekend {
+            background-color: #f5f5f5;
+            color: #666;
+        }
+        
+        .calendar-day.weekend.other-month {
+            background-color: #e9ecef;
+            color: #999;
+        }
+        
+        .calendar-day.has-attendance {
+            background-color: #e8f5e8;
+        }
+        
+        .calendar-day.has-attendance.clocked-out {
+            background-color: #d4edda;
+        }
+        
+        .calendar-day.has-attendance.clocked-in {
+            background-color: #fff3cd;
+        }
+        
+        .calendar-day.weekend.has-attendance {
+            background-color: #e0f2f1;
+        }
+        
+        .calendar-day.weekend.has-attendance.clocked-out {
+            background-color: #c8e6c9;
+        }
+        
+        .calendar-day.weekend.has-attendance.clocked-in {
+            background-color: #fff8e1;
+        }
+        
+        .day-number {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        .attendance-info {
+            font-size: 0.75rem;
+            margin-bottom: 2px;
+        }
+        
+        .clock-in-time {
+            color: #28a745;
+        }
+        
+        .clock-out-time {
+            color: #dc3545;
+        }
+        
+        .working-hours {
+            color: #007bff;
+            font-weight: bold;
+        }
+        
+        .calendar-header {
+            background-color: #f8f9fa;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .calendar-header:nth-child(1) { color: #007bff; } /* 月曜日 */
+        .calendar-header:nth-child(6) { color: #007bff; } /* 土曜日 */
+        .calendar-header:nth-child(7) { color: #dc3545; } /* 日曜日 */
     </style>
 </head>
 <body>
@@ -53,22 +187,18 @@
         <div class="card shadow">
             <div class="card-body p-5">
                 <div class="text-center mb-4">
-                    <i class="fas fa-clock fa-3x text-primary mb-3"></i>
                     <h2 class="card-title">勤怠管理システム</h2>
-                    <p class="text-muted">ログインしてください</p>
                 </div>
                 <form id="loginForm">
                     <div class="mb-3">
-                        <label for="username" class="form-label">ユーザー名</label>
+                        <label for="username" class="form-label">ID</label>
                         <input type="text" class="form-control" id="username" required>
                     </div>
                     <div class="mb-3">
                         <label for="password" class="form-label">パスワード</label>
                         <input type="password" class="form-control" id="password" required>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-sign-in-alt me-2"></i>ログイン
-                    </button>
+                    <button type="submit" class="btn btn-primary w-100">ログイン</button>
                 </form>
                 <div class="mt-3 text-center">
                     <small class="text-muted">
@@ -84,178 +214,482 @@
         <!-- ナビゲーションバー -->
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container-fluid">
-                <a class="navbar-brand" href="#">
+                <a class="navbar-brand" href="#" id="brandNavLink">
                     <i class="fas fa-clock me-2"></i>勤怠管理システム
                 </a>
-                <div class="navbar-nav ms-auto">
-                    <div class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user me-2"></i><span id="currentUser"></span>
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" id="logoutBtn">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" id="dashboardNavLink">ダッシュボード</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" id="historyNavLink">勤怠履歴</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" id="vacationNavLink">有給申請</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" id="adjustmentNavLink">打刻修正</a>
+                        </li>
+                        <!-- 管理者メニュー -->
+                        <div id="adminMenu" class="admin-menu">
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" id="adminVacationManagementNavLink">有給承認・付与調整</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" id="adminEmployeesNavLink">社員管理</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" id="adminAttendanceNavLink">勤怠管理</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" id="adminApprovalsNavLink">申請承認</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="#" id="adminReportsNavLink">レポート出力</a>
+                            </li>
+                        </div>
+                    </ul>
+                    <!-- ユーザー情報とログアウトボタンを右端に配置 -->
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item d-flex align-items-center me-3">
+                            <span class="navbar-text text-white">
+                                <i class="fas fa-user me-2"></i>
+                                <span id="currentUserDisplay">読み込み中...</span>
+                            </span>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="#" id="logoutBtn">
                                 <i class="fas fa-sign-out-alt me-2"></i>ログアウト
-                            </a></li>
-                        </ul>
-                    </div>
+                            </a>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </nav>
 
+        <!-- 画面コンテンツエリア -->
         <div class="container-fluid mt-4">
-            <!-- 出勤・退勤カード -->
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="card attendance-card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">
-                                <i class="fas fa-clock me-2"></i>出勤・退勤
-                            </h5>
-                            <div class="mb-3">
-                                <button id="clockInBtn" class="btn btn-light clock-btn">
-                                    <i class="fas fa-play me-2"></i>出勤打刻
-                                </button>
-                                <button id="clockOutBtn" class="btn btn-light clock-btn">
-                                    <i class="fas fa-stop me-2"></i>退勤打刻
-                                </button>
+            <!-- ダッシュボード画面 -->
+            <div id="dashboardScreen" class="screen-container active">
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-clock me-2"></i>勤怠打刻
+                                </h5>
                             </div>
-                            <div id="clockStatus" class="text-center">
-                                <span class="badge bg-light text-dark">未出勤</span>
+                            <div class="card-body text-center">
+                                <!-- 現在の日付・時刻表示 -->
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="fas fa-calendar me-2"></i>今日の日付
+                                                </h6>
+                                                <div id="currentDate" class="h4 text-primary mb-0">2025年9月19日（金）</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="fas fa-clock me-2"></i>現在時刻
+                                                </h6>
+                                                <div id="currentTime" class="h4 text-success mb-0">14:30:25</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 打刻ボタン -->
+                                <div class="mb-4">
+                                    <button id="clockInBtn" class="btn btn-success btn-lg me-3 clock-btn">
+                                        <i class="fas fa-sign-in-alt me-2"></i>出勤打刻
+                                    </button>
+                                    <button id="clockOutBtn" class="btn btn-danger btn-lg clock-btn">
+                                        <i class="fas fa-sign-out-alt me-2"></i>退勤打刻
+                                    </button>
+                                </div>
+                                
+                                <!-- 今日の勤怠状況 -->
+                                <div class="card bg-primary text-white">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-info-circle me-2"></i>今日の勤怠状況
+                                        </h6>
+                                        <div id="clockStatus" class="text-center">
+                                            <span class="badge bg-secondary fs-6">未出勤</span>
+                                        </div>
+                                        <div id="attendanceInfo" class="mt-3">
+                                            <div class="row">
+                                                <div class="col-md-4">
+                                                    <div class="text-center">
+                                                        <div class="fw-bold">出勤時刻</div>
+                                                        <div id="clockInTime" class="h5">--:--</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="text-center">
+                                                        <div class="fw-bold">退勤時刻</div>
+                                                        <div id="clockOutTime" class="h5">--:--</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="text-center">
+                                                        <div class="fw-bold">勤務時間</div>
+                                                        <div id="workingTime" class="h5">0時間0分</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card vacation-card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">
-                                <i class="fas fa-calendar-alt me-2"></i>有給申請
-                            </h5>
-                            <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#vacationModal">
-                                <i class="fas fa-plus me-2"></i>有給申請
-                            </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 勤怠履歴と月末申請 -->
-            <div class="row mb-4">
-                <div class="col-md-8">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">
-                                <i class="fas fa-history me-2"></i>勤怠履歴
-                            </h5>
-                            <button id="refreshHistoryBtn" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-sync-alt me-1"></i>更新
-                            </button>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-striped table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>日付</th>
-                                            <th>出勤時刻</th>
-                                            <th>退勤時刻</th>
-                                            <th>勤務時間</th>
-                                            <th>ステータス</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="attendanceHistory">
-                                        <tr>
-                                            <td colspan="5" class="text-center text-muted">データを読み込み中...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">
-                                <i class="fas fa-calendar-check me-2"></i>月末申請
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <label for="monthSelect" class="form-label">申請月</label>
-                                <select class="form-select" id="monthSelect">
-                                    <option value="">月を選択してください</option>
+            <!-- 勤怠履歴画面 -->
+            <div id="historyScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="row align-items-center">
+                            <div class="col-md-4">
+                                <select class="form-select" id="historyMonthSelect">
+                                    <option value="">期間選択</option>
                                 </select>
                             </div>
-                            <button id="monthlySubmitBtn" class="btn btn-primary w-100">
-                                <i class="fas fa-paper-plane me-2"></i>月末申請
-                            </button>
+                            <div class="col-md-2">
+                                <button id="searchHistoryBtn" class="btn btn-primary w-100">検索</button>
+                            </div>
+                            <div class="col-md-2">
+                                <button id="monthlySubmitHistoryBtn" class="btn btn-success w-100">月末申請</button>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button id="prevMonthBtn" class="btn btn-outline-secondary btn-sm me-2">← 前月</button>
+                                <span id="currentMonthDisplay" class="fw-bold">2025年9月</span>
+                                <button id="nextMonthBtn" class="btn btn-outline-secondary btn-sm ms-2">次月 →</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- 管理者機能（管理者のみ表示） -->
-            <div id="adminSection" class="row mb-4" style="display: none;">
-                <div class="col-12">
-                    <div class="card admin-card">
-                        <div class="card-header">
-                            <h5 class="mb-0">
-                                <i class="fas fa-user-shield me-2"></i>管理者機能
-                            </h5>
-                        </div>
-                        <div class="card-body">
+                    <div class="card-body">
+                        <!-- カレンダー表示 -->
+                        <div id="calendarContainer">
                             <div class="row">
-                                <div class="col-md-4">
-                                    <button class="btn btn-light w-100 mb-2" onclick="loadEmployees()">
-                                        <i class="fas fa-users me-2"></i>社員一覧
-                                    </button>
+                                <div class="col-12">
+                                    <div class="calendar-grid" id="calendarGrid">
+                                        <!-- カレンダーがここに動的に生成されます -->
+                                    </div>
                                 </div>
-                                <div class="col-md-4">
-                                    <button class="btn btn-light w-100 mb-2" onclick="loadPendingVacations()">
-                                        <i class="fas fa-calendar-times me-2"></i>未承認申請
-                                    </button>
-                                </div>
-                                <div class="col-md-4">
-                                    <button class="btn btn-light w-100 mb-2" onclick="downloadReport()">
-                                        <i class="fas fa-file-pdf me-2"></i>レポート出力
-                                    </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 詳細情報 -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">勤怠詳細</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>日付</th>
+                                                        <th>出勤時刻</th>
+                                                        <th>退勤時刻</th>
+                                                        <th>勤務時間</th>
+                                                        <th>遅刻</th>
+                                                        <th>早退</th>
+                                                        <th>残業</th>
+                                                        <th>ステータス</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="historyTableBody">
+                                                    <!-- 詳細データがここに表示されます -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- 有給申請モーダル -->
-    <div class="modal fade" id="vacationModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">有給申請</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <!-- 有給申請画面 -->
+            <div id="vacationScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <strong>残有給日数: <span id="remainingVacationDays">10日</span></strong>
+                        </div>
+                        <hr>
+                        <form id="vacationForm">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <input type="date" class="form-control" id="vacationStartDate" placeholder="日付選択" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <textarea class="form-control" id="vacationReason" rows="3" placeholder="理由入力欄" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">申請</button>
+                        </form>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    <form id="vacationForm">
-                        <div class="mb-3">
-                            <label for="vacationStartDate" class="form-label">開始日</label>
-                            <input type="date" class="form-control" id="vacationStartDate" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="vacationEndDate" class="form-label">終了日</label>
-                            <input type="date" class="form-control" id="vacationEndDate" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="vacationReason" class="form-label">理由</label>
-                            <textarea class="form-control" id="vacationReason" rows="3" required></textarea>
-                        </div>
-                    </form>
+            </div>
+
+            <!-- 打刻修正申請画面 -->
+            <div id="adjustmentScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-body">
+                        <form id="adjustmentForm">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">対象日:</label>
+                                    <input type="date" class="form-control" id="adjustmentDate" required>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">出勤時刻(修正):</label>
+                                    <input type="time" class="form-control" id="adjustmentClockIn" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">退勤時刻(修正):</label>
+                                    <input type="time" class="form-control" id="adjustmentClockOut" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">理由:</label>
+                                <textarea class="form-control" id="adjustmentReason" rows="3" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">申請</button>
+                        </form>
+                    </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                    <button type="button" class="btn btn-primary" id="submitVacationBtn">申請</button>
+            </div>
+
+            <!-- 管理者ダッシュボード画面 -->
+            <div id="adminDashboardScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-body">
+                        <h5>管理者向けメイン画面</h5>
+                        <p>「社員管理」「勤怠データ」「申請承認」などへリンク</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 社員管理画面 -->
+            <div id="adminEmployeesScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-body">
+                        <h6>社員一覧 （デフォルトで在籍社員のみ表示）</h6>
+                        <hr>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>社員コード</th>
+                                        <th>氏名</th>
+                                        <th>メール</th>
+                                        <th>状態</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="employeesTableBody">
+                                    <tr>
+                                        <td>E001</td>
+                                        <td>山田太郎</td>
+                                        <td>yama@..</td>
+                                        <td>在籍</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary me-1">編集</button>
+                                            <button class="btn btn-sm btn-outline-danger">退職処理</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>E002</td>
+                                        <td>鈴木花子</td>
+                                        <td>hana@..</td>
+                                        <td>在籍</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary me-1">編集</button>
+                                            <button class="btn btn-sm btn-outline-danger">退職処理</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-primary">社員追加ボタン</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 勤怠管理画面 -->
+            <div id="adminAttendanceScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control" id="attendanceEmployeeSelect" placeholder="社員名/コード">
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="attendanceMonthSelect">
+                                    <option value="">期間選択</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button id="searchAttendanceBtn" class="btn btn-primary w-100">検索</button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>日付</th>
+                                        <th>出勤</th>
+                                        <th>退勤</th>
+                                        <th>遅刻</th>
+                                        <th>早退</th>
+                                        <th>残業</th>
+                                        <th>深夜</th>
+                                        <th>状態</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminAttendanceTableBody">
+                                    <tr>
+                                        <td>08/01</td>
+                                        <td>09:05</td>
+                                        <td>18:10</td>
+                                        <td>05分</td>
+                                        <td>0分</td>
+                                        <td>10分</td>
+                                        <td>0分</td>
+                                        <td>承認済</td>
+                                        <td><button class="btn btn-sm btn-outline-primary">編集</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 申請承認画面 -->
+            <div id="adminApprovalsScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-body">
+                        <h6>申請一覧（有給申請・打刻修正・月末申請）</h6>
+                        <hr>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>社員名</th>
+                                        <th>申請種別</th>
+                                        <th>日付</th>
+                                        <th>理由</th>
+                                        <th>状態</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="approvalsTableBody">
+                                    <tr>
+                                        <td>山田太郎</td>
+                                        <td>有給</td>
+                                        <td>08/10</td>
+                                        <td>私用</td>
+                                        <td>未処理</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-success me-1">承認</button>
+                                            <button class="btn btn-sm btn-danger">却下</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>鈴木花子</td>
+                                        <td>打刻修正</td>
+                                        <td>08/05</td>
+                                        <td>打刻ミス</td>
+                                        <td>未処理</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-success me-1">承認</button>
+                                            <button class="btn btn-sm btn-danger">却下</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- レポート出力画面 -->
+            <div id="adminReportsScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <select class="form-select" id="reportEmployeeSelect">
+                                    <option value="">社員選択ドロップダウン</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="reportMonthSelect">
+                                    <option value="">期間選択</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button id="generateReportBtn" class="btn btn-primary w-100">PDF出力ボタン</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 有給承認・付与調整画面 -->
+            <div id="adminVacationManagementScreen" class="screen-container">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-calendar-check me-2"></i>有給承認・付与調整
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>社員名</th>
+                                        <th>申請種別</th>
+                                        <th>日付</th>
+                                        <th>理由</th>
+                                        <th>状態</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vacationManagementTableBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted">データを読み込み中...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -264,6 +698,7 @@
     <!-- アラート表示エリア -->
     <div id="alertContainer" class="position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
 
+    <!-- スクリプト -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="app.js"></script>
 </body>

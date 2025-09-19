@@ -55,6 +55,15 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
      * @param yearMonth 年月（yyyy-MM形式）
      * @return 該当月の勤怠記録リスト
      */
-    @Query("SELECT ar FROM AttendanceRecord ar WHERE ar.employeeId = :empId AND FUNCTION('DATE_FORMAT', ar.attendanceDate, '%Y-%m') = :yearMonth")
-    List<AttendanceRecord> findByEmployeeAndMonth(@Param("empId") Long empId, @Param("yearMonth") String yearMonth);
+    @Query("SELECT ar FROM AttendanceRecord ar WHERE ar.employeeId = :empId AND YEAR(ar.attendanceDate) = :year AND MONTH(ar.attendanceDate) = :month")
+    List<AttendanceRecord> findByEmployeeAndMonth(@Param("empId") Long empId, @Param("year") int year, @Param("month") int month);
+    
+    /**
+     * 従業員IDと日付範囲で勤怠記録を検索（日付降順）
+     * @param employeeId 従業員ID
+     * @param startDate 開始日
+     * @param endDate 終了日
+     * @return 勤怠記録リスト（日付降順）
+     */
+    List<AttendanceRecord> findByEmployeeIdAndAttendanceDateBetweenOrderByAttendanceDateDesc(Long employeeId, LocalDate startDate, LocalDate endDate);
 }

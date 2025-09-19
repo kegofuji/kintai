@@ -47,6 +47,10 @@ public class AttendanceRecord {
     @Column(name = "attendance_fixed_flag", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private Boolean attendanceFixedFlag = false;
     
+    @Enumerated(EnumType.STRING)
+    @Column(name = "submission_status", nullable = false)
+    private SubmissionStatus submissionStatus = SubmissionStatus.NOT_SUBMITTED;
+    
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
     
@@ -163,6 +167,14 @@ public class AttendanceRecord {
     
     public void setAttendanceFixedFlag(Boolean attendanceFixedFlag) {
         this.attendanceFixedFlag = attendanceFixedFlag;
+    }
+    
+    public SubmissionStatus getSubmissionStatus() {
+        return submissionStatus;
+    }
+    
+    public void setSubmissionStatus(SubmissionStatus submissionStatus) {
+        this.submissionStatus = submissionStatus;
     }
     
     public LocalDateTime getCreatedAt() {

@@ -18,23 +18,4 @@ INSERT INTO employees (created_at, email, employee_code, first_name, hire_date, 
 SELECT CURRENT_TIMESTAMP, 'takahashi@example.com', 'EMP004', '美咲', '2022-09-01', FALSE, '高橋', CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM employees WHERE employee_code = 'EMP004');
 
--- user_accounts (link to employees)
-INSERT INTO user_accounts (employee_id, enabled, password, role, username)
-SELECT e.employee_id, TRUE, 'pass', 'EMPLOYEE', 'tanaka'
-FROM employees e
-WHERE e.employee_code = 'EMP001' AND NOT EXISTS (SELECT 1 FROM user_accounts ua WHERE ua.username = 'tanaka');
-
-INSERT INTO user_accounts (employee_id, enabled, password, role, username)
-SELECT e.employee_id, TRUE, 'pass', 'EMPLOYEE', 'sato'
-FROM employees e
-WHERE e.employee_code = 'EMP002' AND NOT EXISTS (SELECT 1 FROM user_accounts ua WHERE ua.username = 'sato');
-
-INSERT INTO user_accounts (employee_id, enabled, password, role, username)
-SELECT e.employee_id, TRUE, 'pass', 'EMPLOYEE', 'suzuki'
-FROM employees e
-WHERE e.employee_code = 'EMP003' AND NOT EXISTS (SELECT 1 FROM user_accounts ua WHERE ua.username = 'suzuki');
-
-INSERT INTO user_accounts (employee_id, enabled, password, role, username)
-SELECT e.employee_id, TRUE, 'pass', 'ADMIN', 'admin'
-FROM employees e
-WHERE e.employee_code = 'EMP001' AND NOT EXISTS (SELECT 1 FROM user_accounts ua WHERE ua.username = 'admin');
+-- user_accountsデータはV5で作成されるテーブルに挿入するため、ここでは省略

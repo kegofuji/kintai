@@ -66,10 +66,14 @@ class MonthlySubmitControllerTest {
     @Test
     @DisplayName("月末申請成功テスト - 全日打刻あり")
     void testMonthlySubmitSuccess() throws Exception {
-        // Given: 完全な勤怠記録をモックで設定
-        java.util.List<AttendanceRecord> records = createCompleteAttendanceRecords(1L, "2025-09", 3);
-        when(attendanceRecordRepository.findByEmployeeAndMonth(anyLong(), anyString()))
-            .thenReturn(records);
+        // Given: AttendanceServiceのモックを設定して成功レスポンスを返す
+        com.kintai.dto.ClockResponse.MonthlySubmitData data = 
+            new com.kintai.dto.ClockResponse.MonthlySubmitData(1L, "2025-09", 3);
+        com.kintai.dto.ClockResponse response = 
+            new com.kintai.dto.ClockResponse(true, "2025-09の勤怠を申請しました", data);
+        
+        when(attendanceService.submitMonthly(any(MonthlySubmitRequest.class)))
+            .thenReturn(response);
 
         // When & Then
         mockMvc.perform(post("/api/attendance/monthly-submit")
@@ -87,8 +91,9 @@ class MonthlySubmitControllerTest {
     @Test
     @DisplayName("月末申請エラーテスト - 未打刻の日がある")
     void testIncompleteAttendance() throws Exception {
-        // Given: 未打刻の勤怠記録を作成（退勤打刻なし）
-        createIncompleteAttendanceRecords(1L, "2025-09", 2);
+        // Given: AttendanceServiceのモックを設定して例外をスローさせる
+        when(attendanceService.submitMonthly(any(MonthlySubmitRequest.class)))
+            .thenThrow(new com.kintai.exception.AttendanceException("INCOMPLETE_ATTENDANCE", "未打刻の日があります"));
 
         // When & Then
         mockMvc.perform(post("/api/attendance/monthly-submit")
@@ -104,6 +109,10 @@ class MonthlySubmitControllerTest {
     @Test
     @DisplayName("月末申請エラーテスト - 未来月の申請")
     void testFutureMonthNotAllowed() throws Exception {
+        // Given: AttendanceServiceのモックを設定して例外をスローさせる
+        when(attendanceService.submitMonthly(any(MonthlySubmitRequest.class)))
+            .thenThrow(new com.kintai.exception.AttendanceException("FUTURE_MONTH_NOT_ALLOWED", "未来月の申請はできません"));
+
         // When & Then
         mockMvc.perform(post("/api/attendance/monthly-submit")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -118,8 +127,9 @@ class MonthlySubmitControllerTest {
     @Test
     @DisplayName("月末申請エラーテスト - 既に申請済み")
     void testAlreadySubmitted() throws Exception {
-        // Given: 既に確定済みの勤怠記録を作成
-        createFixedAttendanceRecords(1L, "2025-09", 2);
+        // Given: AttendanceServiceのモックを設定して例外をスローさせる
+        when(attendanceService.submitMonthly(any(MonthlySubmitRequest.class)))
+            .thenThrow(new com.kintai.exception.AttendanceException("ALREADY_SUBMITTED", "既に申請済みです"));
 
         // When & Then
         mockMvc.perform(post("/api/attendance/monthly-submit")
@@ -135,6 +145,10 @@ class MonthlySubmitControllerTest {
     @Test
     @DisplayName("月末申請エラーテスト - 従業員が存在しない")
     void testEmployeeNotFound() throws Exception {
+        // Given: AttendanceServiceのモックを設定して例外をスローさせる
+        when(attendanceService.submitMonthly(any(MonthlySubmitRequest.class)))
+            .thenThrow(new com.kintai.exception.AttendanceException("EMPLOYEE_NOT_FOUND", "従業員が見つかりません"));
+
         // When & Then
         mockMvc.perform(post("/api/attendance/monthly-submit")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -149,6 +163,10 @@ class MonthlySubmitControllerTest {
     @Test
     @DisplayName("月末申請エラーテスト - 該当月の勤怠記録なし")
     void testNoRecordsFound() throws Exception {
+        // Given: AttendanceServiceのモックを設定して例外をスローさせる
+        when(attendanceService.submitMonthly(any(MonthlySubmitRequest.class)))
+            .thenThrow(new com.kintai.exception.AttendanceException("NO_RECORDS_FOUND", "該当月の勤怠記録が見つかりません"));
+
         // When & Then
         mockMvc.perform(post("/api/attendance/monthly-submit")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -180,48 +198,65 @@ class MonthlySubmitControllerTest {
             .andExpect(status().isBadRequest());
     }
 
-    /**
-     * 完全な勤怠記録を作成（出勤・退勤両方打刻済み）
-     */
-    private java.util.List<AttendanceRecord> createCompleteAttendanceRecords(Long employeeId, String yearMonth, int count) {
-        java.util.List<AttendanceRecord> records = new java.util.ArrayList<>();
-        for (int i = 1; i <= count; i++) {
-            AttendanceRecord record = new AttendanceRecord(employeeId, LocalDate.of(2025, 9, i));
-            record.setClockInTime(LocalDateTime.of(2025, 9, i, 9, 0));
-            record.setClockOutTime(LocalDateTime.of(2025, 9, i, 18, 0));
-            record.setAttendanceFixedFlag(false);
-            records.add(record);
-        }
-        return records;
+    @Test
+    @DisplayName("月末申請エラーテスト - 未承認有給申請あり")
+    void testPendingVacationRequests() throws Exception {
+        // Given: AttendanceServiceのモックを設定して例外をスローさせる
+        when(attendanceService.submitMonthly(any(MonthlySubmitRequest.class)))
+            .thenThrow(new com.kintai.exception.AttendanceException("PENDING_VACATION_REQUESTS", "未承認の有給申請があります"));
+
+        // When & Then
+        mockMvc.perform(post("/api/attendance/monthly-submit")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    new MonthlySubmitRequest(1L, "2025-09"))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.errorCode").value("PENDING_VACATION_REQUESTS"))
+            .andExpect(jsonPath("$.message").value("未承認の有給申請があります"));
     }
 
-    /**
-     * 未打刻の勤怠記録を作成（退勤打刻なし）
-     */
-    private java.util.List<AttendanceRecord> createIncompleteAttendanceRecords(Long employeeId, String yearMonth, int count) {
-        java.util.List<AttendanceRecord> records = new java.util.ArrayList<>();
-        for (int i = 1; i <= count; i++) {
-            AttendanceRecord record = new AttendanceRecord(employeeId, LocalDate.of(2025, 9, i));
-            record.setClockInTime(LocalDateTime.of(2025, 9, i, 9, 0));
-            record.setClockOutTime(null); // 退勤打刻なし
-            record.setAttendanceFixedFlag(false);
-            records.add(record);
-        }
-        return records;
+    @Test
+    @DisplayName("月末申請承認成功テスト")
+    void testMonthlyApproveSuccess() throws Exception {
+        // Given: AttendanceServiceのモックを設定して成功レスポンスを返す
+        com.kintai.dto.ClockResponse.MonthlySubmitData data = 
+            new com.kintai.dto.ClockResponse.MonthlySubmitData(1L, "2025-09", 3);
+        com.kintai.dto.ClockResponse response = 
+            new com.kintai.dto.ClockResponse(true, "2025-09の勤怠を承認しました", data);
+        
+        when(attendanceService.approveMonthlySubmission(anyLong(), anyString()))
+            .thenReturn(response);
+
+        // When & Then
+        mockMvc.perform(post("/api/attendance/monthly-approve")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    new MonthlySubmitRequest(1L, "2025-09"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.message").value("2025-09の勤怠を承認しました"))
+            .andExpect(jsonPath("$.data.employeeId").value(1))
+            .andExpect(jsonPath("$.data.yearMonth").value("2025-09"))
+            .andExpect(jsonPath("$.data.fixedCount").value(3));
     }
 
-    /**
-     * 既に確定済みの勤怠記録を作成
-     */
-    private java.util.List<AttendanceRecord> createFixedAttendanceRecords(Long employeeId, String yearMonth, int count) {
-        java.util.List<AttendanceRecord> records = new java.util.ArrayList<>();
-        for (int i = 1; i <= count; i++) {
-            AttendanceRecord record = new AttendanceRecord(employeeId, LocalDate.of(2025, 9, i));
-            record.setClockInTime(LocalDateTime.of(2025, 9, i, 9, 0));
-            record.setClockOutTime(LocalDateTime.of(2025, 9, i, 18, 0));
-            record.setAttendanceFixedFlag(true); // 既に確定済み
-            records.add(record);
-        }
-        return records;
+    @Test
+    @DisplayName("月末申請承認エラーテスト - 申請されていない")
+    void testMonthlyApproveNotSubmitted() throws Exception {
+        // Given: AttendanceServiceのモックを設定して例外をスローさせる
+        when(attendanceService.approveMonthlySubmission(anyLong(), anyString()))
+            .thenThrow(new com.kintai.exception.AttendanceException("NOT_SUBMITTED", "申請されていません"));
+
+        // When & Then
+        mockMvc.perform(post("/api/attendance/monthly-approve")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    new MonthlySubmitRequest(1L, "2025-09"))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.errorCode").value("NOT_SUBMITTED"))
+            .andExpect(jsonPath("$.message").value("申請されていません"));
     }
+
 }

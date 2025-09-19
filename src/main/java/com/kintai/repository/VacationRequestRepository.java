@@ -68,4 +68,18 @@ public interface VacationRequestRepository extends JpaRepository<VacationRequest
                                                            @Param("startDate") LocalDate startDate,
                                                            @Param("endDate") LocalDate endDate,
                                                            @Param("excludeId") Long excludeId);
+    
+    /**
+     * 従業員の未承認有給申請を検索
+     * @param employeeId 従業員ID
+     * @param startDate 開始日
+     * @param endDate 終了日
+     * @return 未承認の有給申請リスト
+     */
+    @Query("SELECT vr FROM VacationRequest vr WHERE vr.employeeId = :employeeId " +
+           "AND vr.status = 'PENDING' " +
+           "AND ((vr.startDate <= :endDate AND vr.endDate >= :startDate))")
+    List<VacationRequest> findPendingVacationRequestsInPeriod(@Param("employeeId") Long employeeId,
+                                                             @Param("startDate") LocalDate startDate,
+                                                             @Param("endDate") LocalDate endDate);
 }

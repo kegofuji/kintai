@@ -14,6 +14,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * 勤怠管理コントローラー
@@ -87,6 +89,28 @@ public class AttendanceController {
     }
     
     /**
+     * 月末申請承認API
+     * @param request 月末申請リクエスト
+     * @return 承認レスポンス
+     */
+    @PostMapping("/monthly-approve")
+    public ResponseEntity<ClockResponse> monthlyApprove(@Valid @RequestBody MonthlySubmitRequest request) {
+        try {
+            ClockResponse response = attendanceService.approveMonthlySubmission(request.getEmployeeId(), request.getYearMonth());
+            if (!response.isSuccess()) {
+                return ResponseEntity.badRequest().body(response);
+            }
+            return ResponseEntity.ok(response);
+        } catch (AttendanceException e) {
+            ClockResponse errorResponse = new ClockResponse(false, e.getErrorCode(), e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            ClockResponse errorResponse = new ClockResponse(false, "INTERNAL_ERROR", "内部エラーが発生しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    /**
      * ヘルスチェックAPI
      * @return ヘルスステータス
      */
@@ -96,13 +120,56 @@ public class AttendanceController {
     }
     
     /**
+     * 今日の勤怠状況取得API
+     * @param employeeId 従業員ID
+     * @return 今日の勤怠記録
+     */
+    @GetMapping("/today/{employeeId}")
+    public ResponseEntity<ClockResponse> getTodayAttendance(@PathVariable Long employeeId) {
+        ClockResponse response = attendanceService.getTodayAttendance(employeeId);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * 勤怠履歴取得API
+     * @param employeeId 従業員ID
+     * @param year 年（オプション）
+     * @param month 月（オプション）
+     * @return 勤怠履歴
+     */
+    @GetMapping("/history/{employeeId}")
+    public ResponseEntity<ClockResponse> getAttendanceHistory(
+            @PathVariable Long employeeId,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month) {
+        try {
+            ClockResponse response;
+            if (year != null && month != null) {
+                response = attendanceService.getAttendanceHistoryForMonth(employeeId, year, month);
+            } else {
+                response = attendanceService.getAttendanceHistory(employeeId);
+            }
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            ClockResponse errorResponse = new ClockResponse(false, "INTERNAL_ERROR", "勤怠履歴の取得に失敗しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    /**
      * CSRFトークン取得API
      * @param request HTTPリクエスト
      * @return CSRFトークン
      */
     @GetMapping("/csrf-token")
-    public ResponseEntity<CsrfToken> getCsrfToken(HttpServletRequest request) {
+    public ResponseEntity<Map<String, String>> getCsrfToken(HttpServletRequest request) {
         CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
-        return ResponseEntity.ok(csrfToken);
+        Map<String, String> tokenMap = new HashMap<>();
+        if (csrfToken != null) {
+            tokenMap.put("token", csrfToken.getToken());
+        } else {
+            tokenMap.put("token", "");
+        }
+        return ResponseEntity.ok(tokenMap);
     }
 }

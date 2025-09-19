@@ -7,9 +7,12 @@ import com.kintai.dto.MonthlySubmitRequest;
 import com.kintai.entity.AttendanceRecord;
 import com.kintai.entity.AttendanceStatus;
 import com.kintai.entity.Employee;
+import com.kintai.entity.SubmissionStatus;
+import com.kintai.entity.VacationRequest;
 import com.kintai.exception.AttendanceException;
 import com.kintai.repository.AttendanceRecordRepository;
 import com.kintai.repository.EmployeeRepository;
+import com.kintai.repository.VacationRequestRepository;
 import com.kintai.util.TimeCalculator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -20,13 +23,14 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 勤怠管理サービス
  */
 @Service
 @Transactional
-public class AttendanceService { {
+public class AttendanceService {
     
     @Autowired
     private AttendanceRecordRepository attendanceRecordRepository;
@@ -36,6 +40,9 @@ public class AttendanceService { {
     
     @Autowired
     private TimeCalculator timeCalculator;
+    
+    @Autowired
+    private VacationRequestRepository vacationRequestRepository;
     
     /**
      * 出勤打刻処理
@@ -243,6 +250,79 @@ public class AttendanceService { {
     }
     
     /**
+     * 勤怠履歴取得
+     * @param employeeId 従業員ID
+     * @return 勤怠履歴レスポンス
+     */
+    public ClockResponse getAttendanceHistory(Long employeeId) {
+        try {
+            // 1. 従業員存在チェック
+            Employee employee = employeeRepository.findByEmployeeId(employeeId)
+                    .orElseThrow(() -> new AttendanceException(
+                            AttendanceException.EMPLOYEE_NOT_FOUND, 
+                            "従業員が見つかりません"));
+            
+            // 2. 退職者チェック
+            if (employee.isRetired()) {
+                throw new AttendanceException(
+                        AttendanceException.RETIRED_EMPLOYEE, 
+                        "退職済みの従業員です");
+            }
+            
+            // 3. 勤怠履歴を取得（過去30日分）
+            LocalDate endDate = LocalDate.now();
+            LocalDate startDate = endDate.minusDays(30);
+            
+            List<AttendanceRecord> records = attendanceRecordRepository
+                    .findByEmployeeIdAndAttendanceDateBetweenOrderByAttendanceDateDesc(employeeId, startDate, endDate);
+            
+            return new ClockResponse(true, "勤怠履歴を取得しました", records);
+            
+        } catch (AttendanceException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new AttendanceException("INTERNAL_ERROR", "勤怠履歴の取得に失敗しました: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 指定月の勤怠履歴取得
+     * @param employeeId 従業員ID
+     * @param year 年
+     * @param month 月
+     * @return 勤怠履歴レスポンス
+     */
+    public ClockResponse getAttendanceHistoryForMonth(Long employeeId, int year, int month) {
+        try {
+            // 1. 従業員存在チェック
+            Employee employee = employeeRepository.findByEmployeeId(employeeId)
+                    .orElseThrow(() -> new AttendanceException(
+                            AttendanceException.EMPLOYEE_NOT_FOUND, 
+                            "従業員が見つかりません"));
+            
+            // 2. 退職者チェック
+            if (employee.isRetired()) {
+                throw new AttendanceException(
+                        AttendanceException.RETIRED_EMPLOYEE, 
+                        "退職済みの従業員です");
+            }
+            
+            // 3. 指定月の勤怠履歴を取得
+            List<AttendanceRecord> records = attendanceRecordRepository
+                    .findByEmployeeAndMonth(employeeId, year, month);
+            
+            return new ClockResponse(true, "指定月の勤怠履歴を取得しました", records);
+            
+        } catch (AttendanceException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new AttendanceException("INTERNAL_ERROR", "月別勤怠履歴の取得に失敗しました: " + e.getMessage());
+        }
+    }
+    
+    /**
      * 月末申請処理
      * @param request 月末申請リクエスト
      * @return 申請レスポンス
@@ -275,7 +355,8 @@ public class AttendanceService { {
             }
             
             // 4. 該当月の勤怠記録を取得
-            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, yearMonth);
+            YearMonth requestYearMonth = YearMonth.parse(yearMonth, DateTimeFormatter.ofPattern("yyyy-MM"));
+            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, requestYearMonth.getYear(), requestYearMonth.getMonthValue());
             
             if (records.isEmpty()) {
                 throw new AttendanceException(
@@ -302,13 +383,26 @@ public class AttendanceService { {
                         "未打刻の日があります");
             }
             
-            // 7. 勤怠記録を確定状態に更新
+            // 7. 未承認有給申請チェック
+            LocalDate monthStart = requestYearMonth.atDay(1);
+            LocalDate monthEnd = requestYearMonth.atEndOfMonth();
+            
+            List<VacationRequest> pendingVacationRequests = vacationRequestRepository
+                    .findPendingVacationRequestsInPeriod(employeeId, monthStart, monthEnd);
+            
+            if (!pendingVacationRequests.isEmpty()) {
+                throw new AttendanceException(
+                        "PENDING_VACATION_REQUESTS", 
+                        "未承認の有給申請があります");
+            }
+            
+            // 8. 勤怠記録を申請済み状態に更新
             for (AttendanceRecord record : records) {
-                record.setAttendanceFixedFlag(true);
+                record.setSubmissionStatus(SubmissionStatus.SUBMITTED);
             }
             attendanceRecordRepository.saveAll(records);
             
-            // 8. レスポンス作成
+            // 9. レスポンス作成
             ClockResponse.MonthlySubmitData data = new ClockResponse.MonthlySubmitData(
                     employeeId, 
                     yearMonth, 
@@ -323,6 +417,124 @@ public class AttendanceService { {
         } catch (Exception e) {
             e.printStackTrace();
             throw new AttendanceException("INTERNAL_ERROR", "内部エラーが発生しました: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 月末申請承認処理
+     * @param employeeId 従業員ID
+     * @param yearMonth 年月
+     * @return 承認レスポンス
+     */
+    public ClockResponse approveMonthlySubmission(Long employeeId, String yearMonth) {
+        try {
+            // 1. 従業員存在チェック
+            employeeRepository.findByEmployeeId(employeeId)
+                    .orElseThrow(() -> new AttendanceException(
+                            AttendanceException.EMPLOYEE_NOT_FOUND, 
+                            "従業員が見つかりません"));
+            
+            // 2. 該当月の勤怠記録を取得
+            YearMonth requestYearMonth = YearMonth.parse(yearMonth, DateTimeFormatter.ofPattern("yyyy-MM"));
+            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, requestYearMonth.getYear(), requestYearMonth.getMonthValue());
+            
+            if (records.isEmpty()) {
+                throw new AttendanceException(
+                        "NO_RECORDS_FOUND", 
+                        "該当月の勤怠記録が見つかりません");
+            }
+            
+            // 3. 申請済みかチェック
+            boolean isSubmitted = records.stream().anyMatch(record -> 
+                record.getSubmissionStatus() == SubmissionStatus.SUBMITTED);
+            
+            if (!isSubmitted) {
+                throw new AttendanceException(
+                        "NOT_SUBMITTED", 
+                        "申請されていません");
+            }
+            
+            // 4. 既に承認済みかチェック
+            boolean alreadyApproved = records.stream().anyMatch(AttendanceRecord::getAttendanceFixedFlag);
+            if (alreadyApproved) {
+                throw new AttendanceException(
+                        "ALREADY_APPROVED", 
+                        "既に承認済みです");
+            }
+            
+            // 5. 勤怠記録を承認状態に更新
+            for (AttendanceRecord record : records) {
+                record.setAttendanceFixedFlag(true);
+                record.setSubmissionStatus(SubmissionStatus.APPROVED);
+            }
+            attendanceRecordRepository.saveAll(records);
+            
+            // 6. レスポンス作成
+            ClockResponse.MonthlySubmitData data = new ClockResponse.MonthlySubmitData(
+                    employeeId, 
+                    yearMonth, 
+                    records.size()
+            );
+            
+            String message = String.format("%sの勤怠を承認しました", yearMonth);
+            return new ClockResponse(true, message, data);
+            
+        } catch (AttendanceException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new AttendanceException("INTERNAL_ERROR", "内部エラーが発生しました: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 今日の勤怠状況取得
+     * @param employeeId 従業員ID
+     * @return 勤怠レスポンス
+     */
+    public ClockResponse getTodayAttendance(Long employeeId) {
+        LocalDate today = LocalDate.now();
+        
+        // 1. 従業員存在チェック
+        Employee employee = employeeRepository.findByEmployeeId(employeeId)
+                .orElseThrow(() -> new AttendanceException(
+                        AttendanceException.EMPLOYEE_NOT_FOUND, 
+                        "従業員が見つかりません"));
+        
+        // 2. 退職者チェック
+        if (employee.isRetired()) {
+            throw new AttendanceException(
+                    AttendanceException.RETIRED_EMPLOYEE, 
+                    "退職済みの従業員です");
+        }
+        
+        // 3. 今日の勤怠記録を取得
+        Optional<AttendanceRecord> attendanceRecord = attendanceRecordRepository
+                .findByEmployeeIdAndAttendanceDate(employeeId, today);
+        
+        if (attendanceRecord.isPresent()) {
+            AttendanceRecord record = attendanceRecord.get();
+            ClockResponse.ClockData clockData = new ClockResponse.ClockData(
+                    record.getAttendanceId(),
+                    record.getClockInTime(),
+                    record.getClockOutTime(),
+                    record.getLateMinutes(),
+                    record.getEarlyLeaveMinutes(),
+                    record.getOvertimeMinutes(),
+                    record.getNightShiftMinutes()
+            );
+            ClockResponse response = new ClockResponse();
+            response.setSuccess(true);
+            response.setMessage("今日の勤怠状況を取得しました");
+            response.setData(clockData);
+            return response;
+        } else {
+            // 今日の記録がない場合はnullを返す
+            ClockResponse response = new ClockResponse();
+            response.setSuccess(true);
+            response.setMessage("今日の勤怠記録はありません");
+            response.setData(null);
+            return response;
         }
     }
 }

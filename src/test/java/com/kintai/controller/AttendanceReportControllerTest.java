@@ -72,7 +72,7 @@ class AttendanceReportControllerTest {
     void generateAttendanceReport_正常系_データがある場合() throws Exception {
         // モックの設定
         when(employeeRepository.findById(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2024-01"))
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2024, 1))
             .thenReturn(Arrays.asList(testRecord));
         
         // PDF生成のモック
@@ -93,7 +93,7 @@ class AttendanceReportControllerTest {
     void generateAttendanceReport_正常系_データなしの場合() throws Exception {
         // モックの設定
         when(employeeRepository.findById(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2024-01"))
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2024, 1))
             .thenReturn(Arrays.asList());
         
         // PDF生成のモック

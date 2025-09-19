@@ -76,7 +76,7 @@ class AttendanceReportServiceTest {
     void generateAttendanceReportPdf_正常系_データがある場合() {
         // モックの設定
         when(employeeRepository.findById(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2024-01"))
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2024, 1))
             .thenReturn(Arrays.asList(testRecord1, testRecord2));
         
         // テスト実行
@@ -91,7 +91,7 @@ class AttendanceReportServiceTest {
     void generateAttendanceReportPdf_正常系_データなしの場合() {
         // モックの設定
         when(employeeRepository.findById(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2024-01"))
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2024, 1))
             .thenReturn(Arrays.asList());
         
         // テスト実行
@@ -132,7 +132,7 @@ class AttendanceReportServiceTest {
         
         // モックの設定
         when(employeeRepository.findById(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2024-01"))
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2024, 1))
             .thenReturn(Arrays.asList(testRecord1, lateRecord));
         
         // テスト実行
@@ -159,7 +159,7 @@ class AttendanceReportServiceTest {
         
         // モックの設定
         when(employeeRepository.findById(1L)).thenReturn(Optional.of(testEmployee));
-        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, "2024-01"))
+        when(attendanceRecordRepository.findByEmployeeAndMonth(1L, 2024, 1))
             .thenReturn(Arrays.asList(vacationRecord));
         
         // テスト実行

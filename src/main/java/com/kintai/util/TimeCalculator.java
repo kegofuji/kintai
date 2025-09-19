@@ -1,5 +1,6 @@
 package com.kintai.util;
 
+import com.kintai.entity.AttendanceRecord;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -156,5 +157,34 @@ public class TimeCalculator {
      */
     public LocalDateTime getCurrentTokyoTime() {
         return LocalDateTime.now(TOKYO_ZONE);
+    }
+    
+    /**
+     * 勤怠記録の遅刻・早退・残業・深夜勤務時間を再計算して設定
+     * @param attendanceRecord 勤怠記録
+     */
+    public void calculateAttendanceMetrics(AttendanceRecord attendanceRecord) {
+        if (attendanceRecord.getClockInTime() == null || attendanceRecord.getClockOutTime() == null) {
+            return;
+        }
+        
+        // 遅刻時間を計算・設定
+        int lateMinutes = calculateLateMinutes(attendanceRecord.getClockInTime());
+        attendanceRecord.setLateMinutes(lateMinutes);
+        
+        // 早退時間を計算・設定
+        int earlyLeaveMinutes = calculateEarlyLeaveMinutes(attendanceRecord.getClockOutTime());
+        attendanceRecord.setEarlyLeaveMinutes(earlyLeaveMinutes);
+        
+        // 実働時間を計算
+        int workingMinutes = calculateWorkingMinutes(attendanceRecord.getClockInTime(), attendanceRecord.getClockOutTime());
+        
+        // 残業時間を計算・設定
+        int overtimeMinutes = calculateOvertimeMinutes(workingMinutes);
+        attendanceRecord.setOvertimeMinutes(overtimeMinutes);
+        
+        // 深夜勤務時間を計算・設定
+        int nightShiftMinutes = calculateNightShiftMinutes(attendanceRecord.getClockInTime(), attendanceRecord.getClockOutTime());
+        attendanceRecord.setNightShiftMinutes(nightShiftMinutes);
     }
 }

@@ -15,13 +15,13 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
         format_sql: false
   flyway:
-    enabled: false
+    enabled: true
   h2:
     console:
       enabled: true
 
 server:
-  port: 0
+  port: 8080
 
 logging:
   level:

@@ -37,6 +37,13 @@ public class ClockResponse {
         this.message = message;
     }
     
+    // 汎用データレスポンス用コンストラクタ
+    public ClockResponse(boolean success, String message, Object data) {
+        this.success = success;
+        this.message = message;
+        this.data = data;
+    }
+    
     // ゲッター・セッター
     public boolean isSuccess() {
         return success;

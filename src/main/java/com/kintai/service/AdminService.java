@@ -47,7 +47,10 @@ public class AdminService {
     public boolean approveAttendance(Long employeeId, String yearMonth) {
         try {
             // 該当月の勤怠記録を取得
-            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, yearMonth);
+            String[] parts = yearMonth.split("-");
+            int year = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, year, month);
             
             if (records.isEmpty()) {
                 return false;
