@@ -3,16 +3,16 @@ CREATE TABLE attendance_records (
     attendance_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     employee_id BIGINT NOT NULL,
     attendance_date DATE NOT NULL,
-    clock_in_time DATETIME NULL,
-    clock_out_time DATETIME NULL,
+    clock_in_time TIMESTAMP NULL,
+    clock_out_time TIMESTAMP NULL,
     late_minutes INT NOT NULL DEFAULT 0,
     early_leave_minutes INT NOT NULL DEFAULT 0,
     overtime_minutes INT NOT NULL DEFAULT 0,
     night_shift_minutes INT NOT NULL DEFAULT 0,
     attendance_status VARCHAR(20) NOT NULL DEFAULT 'NORMAL',
-    attendance_fixed_flag TINYINT(1) NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    attendance_fixed_flag BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
 );
 
