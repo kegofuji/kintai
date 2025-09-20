@@ -12,8 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
+import com.kintai.util.BusinessDayCalculator;
 
 /**
  * 有給休暇申請サービス
@@ -27,6 +27,12 @@ public class VacationService {
     
     @Autowired
     private EmployeeRepository employeeRepository;
+    
+    @Autowired
+    private BusinessDayCalculator businessDayCalculator;
+    
+    // 年間付与日数（簡易実装。必要なら従業員ごとに管理に変更）
+    private static final int DEFAULT_ANNUAL_PAID_LEAVE_DAYS = 10;
     
     /**
      * 有給休暇申請処理
@@ -62,17 +68,40 @@ public class VacationService {
                         "既に申請済みの日付を含んでいます");
             }
             
-            // 5. 申請日数計算
-            int days = calculateVacationDays(startDate, endDate);
+            // 5. 付与基準日の判定（当年1/1 もしくは入社日、遅い方）
+            LocalDate startOfYear = LocalDate.now().withMonth(1).withDayOfMonth(1);
+            LocalDate grantDate = employee.getHireDate().isAfter(startOfYear) ? employee.getHireDate() : startOfYear;
             
-            // 6. 有給申請作成
+            // 入社日前は取得不可
+            if (startDate.isBefore(grantDate)) {
+                throw new VacationException(
+                        VacationException.INVALID_DATE_RANGE,
+                        "入社日より前は有給を取得できません");
+            }
+
+            // 6. 申請日数（営業日換算。土日除外、祝日未考慮）
+            int days = calculateVacationDays(startDate, endDate);
+
+            // 7. 残日数超過の禁止（当年内・付与後の承認済み消化分を控除）
+            LocalDate endOfYear = LocalDate.now().withMonth(12).withDayOfMonth(31);
+            Integer usedDays = vacationRequestRepository
+                    .sumApprovedDaysInPeriod(employeeId, grantDate, endOfYear);
+            if (usedDays == null) usedDays = 0;
+            int remaining = Math.max(0, DEFAULT_ANNUAL_PAID_LEAVE_DAYS - usedDays);
+            if (days > remaining) {
+                throw new VacationException(
+                        VacationException.INVALID_DATE_RANGE,
+                        "残有給日数を超える申請はできません");
+            }
+            
+            // 8. 有給申請作成（理由必須はコントローラで検証済みだが保険でnull→空文字整備）
             VacationRequest vacationRequest = new VacationRequest(employeeId, startDate, endDate, reason);
             vacationRequest.setDays(days);
             
-            // 7. データベース保存
+            // 9. データベース保存
             VacationRequest savedRequest = vacationRequestRepository.save(vacationRequest);
             
-            // 8. レスポンス作成
+            // 10. レスポンス作成
             VacationRequestDto.VacationData data = new VacationRequestDto.VacationData(
                     savedRequest.getVacationId(),
                     savedRequest.getEmployeeId(),
@@ -136,6 +165,37 @@ public class VacationService {
     }
     
     /**
+     * 残有給日数を取得（年度は当年1/1〜12/31のシンプル運用）
+     * @param employeeId 従業員ID
+     * @return 残日数
+     */
+    @Transactional(readOnly = true)
+    public int getRemainingVacationDays(Long employeeId) {
+        LocalDate today = LocalDate.now();
+        LocalDate startOfYear = today.withMonth(1).withDayOfMonth(1);
+        LocalDate endOfYear = today.withMonth(12).withDayOfMonth(31);
+        
+        Employee employee = employeeRepository.findByEmployeeId(employeeId)
+                .orElse(null);
+        if (employee == null) {
+            return 0;
+        }
+        // 付与基準日：当年の1/1 または 入社日の遅い方
+        LocalDate grantDate = employee.getHireDate().isAfter(startOfYear) ? employee.getHireDate() : startOfYear;
+        
+        // まだ付与前の場合は残日数0
+        if (today.isBefore(grantDate)) {
+            return 0;
+        }
+        
+        Integer usedDays = vacationRequestRepository
+                .sumApprovedDaysInPeriod(employeeId, grantDate, endOfYear);
+        if (usedDays == null) usedDays = 0;
+        int remaining = DEFAULT_ANNUAL_PAID_LEAVE_DAYS - usedDays;
+        return Math.max(remaining, 0);
+    }
+
+    /**
      * 従業員の有給申請一覧取得
      * @param employeeId 従業員ID
      * @return 申請一覧
@@ -167,6 +227,14 @@ public class VacationService {
                     VacationException.INVALID_DATE_RANGE, 
                     "過去の日付は申請できません");
         }
+
+        // 全休のみ: 営業日数が0の場合は不正
+        int bizDays = businessDayCalculator.countBusinessDaysInclusive(startDate, endDate);
+        if (bizDays <= 0) {
+            throw new VacationException(
+                    VacationException.INVALID_DATE_RANGE,
+                    "営業日が含まれない期間は申請できません");
+        }
     }
     
     /**
@@ -176,7 +244,7 @@ public class VacationService {
      * @return 日数
      */
     private int calculateVacationDays(LocalDate startDate, LocalDate endDate) {
-        return (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        return businessDayCalculator.countBusinessDaysInclusive(startDate, endDate);
     }
     
     /**
@@ -185,16 +253,35 @@ public class VacationService {
      * @param newStatus 新しいステータス
      */
     private void validateStatusChange(VacationStatus currentStatus, VacationStatus newStatus) {
-        if (currentStatus == VacationStatus.APPROVED || currentStatus == VacationStatus.REJECTED) {
-            throw new VacationException(
-                    VacationException.INVALID_STATUS_CHANGE, 
-                    "既に処理済みの申請は変更できません");
-        }
-        
         if (currentStatus == newStatus) {
             throw new VacationException(
-                    VacationException.INVALID_STATUS_CHANGE, 
+                    VacationException.INVALID_STATUS_CHANGE,
                     "同じステータスに変更することはできません");
+        }
+
+        // 承認済み・申請中の取消は許可（APPROVED/PENDING → CANCELLED）
+        if (newStatus == VacationStatus.CANCELLED) {
+            if (currentStatus == VacationStatus.CANCELLED) {
+                throw new VacationException(
+                        VacationException.INVALID_STATUS_CHANGE,
+                        "既に取消済みです");
+            }
+            // PENDING, APPROVED からの取消は許可
+            return;
+        }
+
+        // CANCELLED/REJECTED から他ステータスへは不可
+        if (currentStatus == VacationStatus.CANCELLED || currentStatus == VacationStatus.REJECTED) {
+            throw new VacationException(
+                    VacationException.INVALID_STATUS_CHANGE,
+                    "既に処理済みの申請は変更できません");
+        }
+
+        // APPROVED から CANCELLED 以外への変更は不可
+        if (currentStatus == VacationStatus.APPROVED) {
+            throw new VacationException(
+                    VacationException.INVALID_STATUS_CHANGE,
+                    "承認済みの申請は取消以外に変更できません");
         }
     }
 }

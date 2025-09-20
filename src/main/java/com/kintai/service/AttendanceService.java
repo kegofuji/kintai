@@ -22,7 +22,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -409,7 +411,7 @@ public class AttendanceService {
                     records.size()
             );
             
-            String message = String.format("%sの勤怠を申請しました", yearMonth);
+            String message = "月末申請が完了しました";
             return new ClockResponse(true, message, data);
             
         } catch (AttendanceException e) {
@@ -455,7 +457,8 @@ public class AttendanceService {
             }
             
             // 4. 既に承認済みかチェック
-            boolean alreadyApproved = records.stream().anyMatch(AttendanceRecord::getAttendanceFixedFlag);
+            boolean alreadyApproved = records.stream().anyMatch(record -> 
+                record.getAttendanceFixedFlag() || record.getSubmissionStatus() == SubmissionStatus.APPROVED);
             if (alreadyApproved) {
                 throw new AttendanceException(
                         "ALREADY_APPROVED", 
@@ -479,6 +482,192 @@ public class AttendanceService {
             String message = String.format("%sの勤怠を承認しました", yearMonth);
             return new ClockResponse(true, message, data);
             
+        } catch (AttendanceException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new AttendanceException("INTERNAL_ERROR", "内部エラーが発生しました: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 月末申請却下処理
+     * @param employeeId 従業員ID
+     * @param yearMonth 年月
+     * @return 却下レスポンス
+     */
+    public ClockResponse rejectMonthlySubmission(Long employeeId, String yearMonth) {
+        try {
+            // 1. 従業員存在チェック
+            employeeRepository.findByEmployeeId(employeeId)
+                    .orElseThrow(() -> new AttendanceException(
+                            AttendanceException.EMPLOYEE_NOT_FOUND, 
+                            "従業員が見つかりません"));
+            
+            // 2. 該当月の勤怠記録を取得
+            YearMonth requestYearMonth = YearMonth.parse(yearMonth, DateTimeFormatter.ofPattern("yyyy-MM"));
+            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, requestYearMonth.getYear(), requestYearMonth.getMonthValue());
+            
+            if (records.isEmpty()) {
+                throw new AttendanceException(
+                        "NO_RECORDS_FOUND", 
+                        "該当月の勤怠記録が見つかりません");
+            }
+            
+            // 3. 申請済みかチェック
+            boolean isSubmitted = records.stream().anyMatch(record -> 
+                record.getSubmissionStatus() == SubmissionStatus.SUBMITTED);
+            
+            if (!isSubmitted) {
+                throw new AttendanceException(
+                        "NOT_SUBMITTED", 
+                        "申請されていません");
+            }
+            
+            // 4. 既に確定済みかチェック
+            boolean alreadyFixed = records.stream().anyMatch(record -> 
+                record.getAttendanceFixedFlag() || record.getSubmissionStatus() == SubmissionStatus.APPROVED);
+            if (alreadyFixed) {
+                throw new AttendanceException(
+                        "ALREADY_FIXED", 
+                        "既に確定済みです");
+            }
+            
+            // 5. 勤怠記録を却下状態に更新
+            for (AttendanceRecord record : records) {
+                record.setSubmissionStatus(SubmissionStatus.REJECTED);
+            }
+            attendanceRecordRepository.saveAll(records);
+            
+            // 6. レスポンス作成
+            ClockResponse.MonthlySubmitData data = new ClockResponse.MonthlySubmitData(
+                    employeeId, 
+                    yearMonth, 
+                    records.size()
+            );
+            
+            String message = String.format("%sの勤怠申請を却下しました", yearMonth);
+            return new ClockResponse(true, message, data);
+            
+        } catch (AttendanceException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new AttendanceException("INTERNAL_ERROR", "内部エラーが発生しました: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 月末申請状態取得処理
+     * @param employeeId 従業員ID
+     * @param yearMonth 年月
+     * @return 申請状態レスポンス
+     */
+    public ClockResponse getMonthlySubmissionStatus(Long employeeId, String yearMonth) {
+        try {
+            // 1. 従業員存在チェック
+            employeeRepository.findByEmployeeId(employeeId)
+                    .orElseThrow(() -> new AttendanceException(
+                            AttendanceException.EMPLOYEE_NOT_FOUND, 
+                            "従業員が見つかりません"));
+            
+            // 2. 該当月の勤怠記録を取得
+            YearMonth requestYearMonth = YearMonth.parse(yearMonth, DateTimeFormatter.ofPattern("yyyy-MM"));
+            List<AttendanceRecord> records = attendanceRecordRepository.findByEmployeeAndMonth(employeeId, requestYearMonth.getYear(), requestYearMonth.getMonthValue());
+            
+            if (records.isEmpty()) {
+                throw new AttendanceException(
+                        "NO_RECORDS_FOUND", 
+                        "該当月の勤怠記録が見つかりません");
+            }
+            
+            // 3. 申請状態を取得（最初のレコードの状態を使用）
+            SubmissionStatus status = records.get(0).getSubmissionStatus();
+            boolean isFixed = records.get(0).getAttendanceFixedFlag();
+            
+            // 4. レスポンス作成
+            Map<String, Object> data = new HashMap<>();
+            data.put("submissionStatus", status.name());
+            data.put("attendanceFixedFlag", isFixed);
+            data.put("yearMonth", yearMonth);
+            data.put("recordCount", records.size());
+            
+            String message = String.format("%sの申請状態: %s", yearMonth, status.getDisplayName());
+            return new ClockResponse(true, message, data);
+            
+        } catch (AttendanceException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new AttendanceException("INTERNAL_ERROR", "内部エラーが発生しました: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 月末申請取消処理
+     * @param employeeId 従業員ID
+     * @param yearMonth 年月
+     * @return 取消レスポンス
+     */
+    public ClockResponse cancelMonthlySubmission(Long employeeId, String yearMonth) {
+        try {
+            // 1. 従業員存在チェック
+            employeeRepository.findByEmployeeId(employeeId)
+                    .orElseThrow(() -> new AttendanceException(
+                            AttendanceException.EMPLOYEE_NOT_FOUND,
+                            "従業員が見つかりません"));
+
+            // 2. 該当月の勤怠記録を取得
+            YearMonth requestYearMonth = YearMonth.parse(yearMonth, DateTimeFormatter.ofPattern("yyyy-MM"));
+            List<AttendanceRecord> records = attendanceRecordRepository
+                    .findByEmployeeAndMonth(employeeId, requestYearMonth.getYear(), requestYearMonth.getMonthValue());
+
+            if (records.isEmpty()) {
+                throw new AttendanceException(
+                        "NO_RECORDS_FOUND",
+                        "該当月の勤怠記録が見つかりません");
+            }
+
+            // 3. 承認済み/確定済みは取消不可
+            boolean hasApprovedOrFixed = records.stream().anyMatch(record ->
+                    Boolean.TRUE.equals(record.getAttendanceFixedFlag()) ||
+                            record.getSubmissionStatus() == SubmissionStatus.APPROVED);
+            if (hasApprovedOrFixed) {
+                throw new AttendanceException(
+                        "CANNOT_CANCEL_APPROVED",
+                        "承認済みは取り消せません");
+            }
+
+            // 4. 申請中が存在するか確認（なければ冪等に成功扱い）
+            boolean isSubmitted = records.stream().anyMatch(record ->
+                    record.getSubmissionStatus() == SubmissionStatus.SUBMITTED);
+            if (!isSubmitted) {
+                ClockResponse.MonthlySubmitData data = new ClockResponse.MonthlySubmitData(
+                        employeeId,
+                        yearMonth,
+                        records.size()
+                );
+                return new ClockResponse(true, "月末申請を取消しました", data);
+            }
+
+            // 5. 申請状態を未申請に戻す
+            for (AttendanceRecord record : records) {
+                if (record.getSubmissionStatus() == SubmissionStatus.SUBMITTED) {
+                    record.setSubmissionStatus(SubmissionStatus.NOT_SUBMITTED);
+                }
+            }
+            attendanceRecordRepository.saveAll(records);
+
+            // 6. レスポンス作成
+            ClockResponse.MonthlySubmitData data = new ClockResponse.MonthlySubmitData(
+                    employeeId,
+                    yearMonth,
+                    records.size()
+            );
+
+            String message = "月末申請を取消しました";
+            return new ClockResponse(true, message, data);
+
         } catch (AttendanceException e) {
             throw e;
         } catch (Exception e) {

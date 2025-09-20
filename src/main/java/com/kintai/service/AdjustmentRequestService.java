@@ -3,7 +3,6 @@ package com.kintai.service;
 import com.kintai.dto.AdjustmentRequestDto;
 import com.kintai.entity.AdjustmentRequest;
 import com.kintai.entity.AttendanceRecord;
-import com.kintai.entity.Employee;
 import com.kintai.exception.AttendanceException;
 import com.kintai.repository.AdjustmentRequestRepository;
 import com.kintai.repository.AttendanceRecordRepository;
@@ -16,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * 勤怠修正申請サービス
@@ -56,18 +54,19 @@ public class AdjustmentRequestService {
             throw new AttendanceException("INVALID_DATE", "対象日は過去日または当日のみ指定可能です");
         }
         
-        // 3. 出勤時間と退勤時間のバリデーション
+        // 3. 出勤時間と退勤時間のバリデーション（片側のみ許容、両方nullは不可）
         LocalDateTime newClockIn = requestDto.getNewClockIn();
         LocalDateTime newClockOut = requestDto.getNewClockOut();
+        if (newClockIn == null && newClockOut == null) {
+            throw new AttendanceException("INVALID_TIME", "出勤または退勤のいずれかは必須です");
+        }
         
         if (newClockIn != null && newClockOut != null && newClockIn.isAfter(newClockOut)) {
             throw new AttendanceException("INVALID_TIME_ORDER", "出勤時間は退勤時間より前である必要があります");
         }
         
-        // 4. 既存の申請がないかチェック
-        Optional<AdjustmentRequest> existingRequest = adjustmentRequestRepository
-                .findByEmployeeIdAndTargetDate(employeeId, targetDate);
-        if (existingRequest.isPresent()) {
+        // 4. 同日同社員のアクティブ申請（PENDING/APPROVED）がないか
+        if (adjustmentRequestRepository.existsActiveRequestForDate(employeeId, targetDate)) {
             throw new AttendanceException("DUPLICATE_REQUEST", "該当日の修正申請は既に存在します");
         }
         
@@ -83,7 +82,7 @@ public class AdjustmentRequestService {
      * @param adjustmentRequestId 修正申請ID
      * @return 承認された修正申請
      */
-    public AdjustmentRequest approveAdjustmentRequest(Long adjustmentRequestId) {
+    public AdjustmentRequest approveAdjustmentRequest(Long adjustmentRequestId, Long approverEmployeeId) {
         // 1. 修正申請を取得
         AdjustmentRequest adjustmentRequest = adjustmentRequestRepository.findById(adjustmentRequestId)
                 .orElseThrow(() -> new AttendanceException("ADJUSTMENT_REQUEST_NOT_FOUND", "修正申請が見つかりません: " + adjustmentRequestId));
@@ -110,6 +109,8 @@ public class AdjustmentRequestService {
         
         // 7. 修正申請の状態を承認に更新
         adjustmentRequest.setStatus(AdjustmentRequest.AdjustmentStatus.APPROVED);
+        adjustmentRequest.setApprovedByEmployeeId(approverEmployeeId);
+        adjustmentRequest.setApprovedAt(LocalDateTime.now());
         
         return adjustmentRequestRepository.save(adjustmentRequest);
     }
@@ -119,7 +120,7 @@ public class AdjustmentRequestService {
      * @param adjustmentRequestId 修正申請ID
      * @return 却下された修正申請
      */
-    public AdjustmentRequest rejectAdjustmentRequest(Long adjustmentRequestId) {
+    public AdjustmentRequest rejectAdjustmentRequest(Long adjustmentRequestId, Long approverEmployeeId, String comment) {
         // 1. 修正申請を取得
         AdjustmentRequest adjustmentRequest = adjustmentRequestRepository.findById(adjustmentRequestId)
                 .orElseThrow(() -> new AttendanceException("ADJUSTMENT_REQUEST_NOT_FOUND", "修正申請が見つかりません: " + adjustmentRequestId));
@@ -129,8 +130,15 @@ public class AdjustmentRequestService {
             throw new AttendanceException("INVALID_STATUS", "却下可能な状態ではありません");
         }
         
-        // 3. 修正申請の状態を却下に更新
+        // 3. 却下コメント必須
+        if (comment == null || comment.trim().isEmpty()) {
+            throw new AttendanceException("REJECTION_COMMENT_REQUIRED", "却下コメントは必須です");
+        }
+        // 4. 修正申請の状態を却下に更新
         adjustmentRequest.setStatus(AdjustmentRequest.AdjustmentStatus.REJECTED);
+        adjustmentRequest.setRejectionComment(comment.trim());
+        adjustmentRequest.setRejectedByEmployeeId(approverEmployeeId);
+        adjustmentRequest.setRejectedAt(LocalDateTime.now());
         
         return adjustmentRequestRepository.save(adjustmentRequest);
     }

@@ -4,6 +4,8 @@ import com.kintai.entity.AdjustmentRequest;
 import com.kintai.exception.AttendanceException;
 import com.kintai.service.AdjustmentRequestService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -30,9 +32,10 @@ public class AdminAdjustmentRequestController {
      * @return 承認結果
      */
     @PostMapping("/adjustment/approve/{adjustmentRequestId}")
-    public ResponseEntity<Map<String, Object>> approveAdjustmentRequest(@PathVariable Long adjustmentRequestId) {
+    public ResponseEntity<Map<String, Object>> approveAdjustmentRequest(@PathVariable Long adjustmentRequestId, jakarta.servlet.http.HttpServletRequest request) {
         try {
-            AdjustmentRequest approvedRequest = adjustmentRequestService.approveAdjustmentRequest(adjustmentRequestId);
+            Long approverEmployeeId = resolveApproverEmployeeId(request);
+            AdjustmentRequest approvedRequest = adjustmentRequestService.approveAdjustmentRequest(adjustmentRequestId, approverEmployeeId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -64,9 +67,10 @@ public class AdminAdjustmentRequestController {
      * @return 却下結果
      */
     @PostMapping("/adjustment/reject/{adjustmentRequestId}")
-    public ResponseEntity<Map<String, Object>> rejectAdjustmentRequest(@PathVariable Long adjustmentRequestId) {
+    public ResponseEntity<Map<String, Object>> rejectAdjustmentRequest(@PathVariable Long adjustmentRequestId, @RequestParam String comment, jakarta.servlet.http.HttpServletRequest request) {
         try {
-            AdjustmentRequest rejectedRequest = adjustmentRequestService.rejectAdjustmentRequest(adjustmentRequestId);
+            Long approverEmployeeId = resolveApproverEmployeeId(request);
+            AdjustmentRequest rejectedRequest = adjustmentRequestService.rejectAdjustmentRequest(adjustmentRequestId, approverEmployeeId, comment);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -90,6 +94,26 @@ public class AdminAdjustmentRequestController {
             errorResponse.put("message", "内部エラーが発生しました");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
+    }
+
+    private Long resolveApproverEmployeeId(jakarta.servlet.http.HttpServletRequest request) {
+        // 1) Spring Security認証情報から取得
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof com.kintai.entity.UserAccount user) {
+                return user.getEmployeeId();
+            }
+        } catch (Exception ignored) {}
+        
+        // 2) セッションから取得（AuthControllerが設定）
+        try {
+            Object attr = request.getSession(false) != null ? request.getSession(false).getAttribute("employeeId") : null;
+            if (attr instanceof Long id) return id;
+            if (attr instanceof Integer i) return i.longValue();
+        } catch (Exception ignored) {}
+        
+        // 取得できない場合はnull（上位で扱う）
+        return null;
     }
     
     /**

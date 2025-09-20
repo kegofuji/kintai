@@ -29,8 +29,8 @@ class Router {
         // 管理者向けルート
         this.routes.set('/admin', { screen: 'adminDashboardScreen', title: '管理者ダッシュボード', admin: true });
         this.routes.set('/admin/employees', { screen: 'adminEmployeesScreen', title: '社員管理', admin: true });
-        this.routes.set('/admin/attendance', { screen: 'adminAttendanceScreen', title: '勤怠管理', admin: true });
-        this.routes.set('/admin/approvals', { screen: 'adminApprovalsScreen', title: '申請承認', admin: true });
+        // 勤怠管理画面は廃止
+        this.routes.set('/admin/approvals', { screen: 'adminApprovalsScreen', title: '打刻修正', admin: true });
         this.routes.set('/admin/reports', { screen: 'adminReportsScreen', title: 'レポート出力', admin: true });
         this.routes.set('/admin/vacation-management', { screen: 'adminVacationManagementScreen', title: '有給承認・付与調整', admin: true });
     }
@@ -170,7 +170,7 @@ class Router {
                 }
                 break;
             case 'historyScreen':
-                if (window.historyScreen) {
+                if (window.historyScreen && !window.historyScreen.initialized) {
                     window.historyScreen.init();
                 }
                 break;
@@ -194,11 +194,7 @@ class Router {
                     window.adminScreen.initEmployees();
                 }
                 break;
-            case 'adminAttendanceScreen':
-                if (window.adminScreen) {
-                    window.adminScreen.initAttendance();
-                }
-                break;
+            // adminAttendanceScreen は廃止
             case 'adminApprovalsScreen':
                 if (window.adminScreen) {
                     window.adminScreen.initApprovals();

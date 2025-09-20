@@ -3,6 +3,7 @@ package com.kintai.repository;
 import com.kintai.entity.AdjustmentRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -49,4 +50,10 @@ public interface AdjustmentRequestRepository extends JpaRepository<AdjustmentReq
      * @return 承認待ちの件数
      */
     long countByStatus(AdjustmentRequest.AdjustmentStatus status);
+
+    /**
+     * 同日同社員のアクティブ申請（PENDING/APPROVED）の存在確認
+     */
+    @Query("SELECT COUNT(ar) > 0 FROM AdjustmentRequest ar WHERE ar.employeeId = :employeeId AND ar.targetDate = :targetDate AND ar.status IN ('PENDING','APPROVED')")
+    boolean existsActiveRequestForDate(@Param("employeeId") Long employeeId, @Param("targetDate") LocalDate targetDate);
 }

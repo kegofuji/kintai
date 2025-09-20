@@ -82,4 +82,18 @@ public interface VacationRequestRepository extends JpaRepository<VacationRequest
     List<VacationRequest> findPendingVacationRequestsInPeriod(@Param("employeeId") Long employeeId,
                                                              @Param("startDate") LocalDate startDate,
                                                              @Param("endDate") LocalDate endDate);
+
+    /**
+     * 指定期間内の承認済み有給申請日数の合計を取得
+     * @param employeeId 従業員ID
+     * @param startDate 集計開始日
+     * @param endDate 集計終了日
+     * @return 合計日数（該当なしは0）
+     */
+    @Query("SELECT COALESCE(SUM(vr.days), 0) FROM VacationRequest vr WHERE vr.employeeId = :employeeId " +
+           "AND vr.status = 'APPROVED' " +
+           "AND vr.startDate >= :startDate AND vr.endDate <= :endDate")
+    Integer sumApprovedDaysInPeriod(@Param("employeeId") Long employeeId,
+                                   @Param("startDate") LocalDate startDate,
+                                   @Param("endDate") LocalDate endDate);
 }

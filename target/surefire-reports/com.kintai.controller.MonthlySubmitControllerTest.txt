@@ -1,69 +1,124 @@
 -------------------------------------------------------------------------------
 Test set: com.kintai.controller.MonthlySubmitControllerTest
 -------------------------------------------------------------------------------
-Tests run: 8, Failures: 6, Errors: 0, Skipped: 0, Time elapsed: 0.213 s <<< FAILURE! -- in com.kintai.controller.MonthlySubmitControllerTest
-com.kintai.controller.MonthlySubmitControllerTest.testNoRecordsFound -- Time elapsed: 0.006 s <<< FAILURE!
-java.lang.AssertionError: Status expected:<400> but was:<500>
+Tests run: 11, Failures: 11, Errors: 0, Skipped: 0, Time elapsed: 0.207 s <<< FAILURE! -- in com.kintai.controller.MonthlySubmitControllerTest
+com.kintai.controller.MonthlySubmitControllerTest.testValidationErrorInvalidYearMonth -- Time elapsed: 0.003 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<400> but was:<403>
 	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
 	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
 	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
 	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
-	at com.kintai.controller.MonthlySubmitControllerTest.testNoRecordsFound(MonthlySubmitControllerTest.java:157)
+	at com.kintai.controller.MonthlySubmitControllerTest.testValidationErrorInvalidYearMonth(MonthlySubmitControllerTest.java:198)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+com.kintai.controller.MonthlySubmitControllerTest.testNoRecordsFound -- Time elapsed: 0.004 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<400> but was:<403>
+	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
+	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
+	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
+	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
+	at com.kintai.controller.MonthlySubmitControllerTest.testNoRecordsFound(MonthlySubmitControllerTest.java:175)
 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
 com.kintai.controller.MonthlySubmitControllerTest.testIncompleteAttendance -- Time elapsed: 0.002 s <<< FAILURE!
-java.lang.AssertionError: Status expected:<400> but was:<500>
+java.lang.AssertionError: Status expected:<400> but was:<403>
 	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
 	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
 	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
 	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
-	at com.kintai.controller.MonthlySubmitControllerTest.testIncompleteAttendance(MonthlySubmitControllerTest.java:98)
+	at com.kintai.controller.MonthlySubmitControllerTest.testIncompleteAttendance(MonthlySubmitControllerTest.java:103)
 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
 com.kintai.controller.MonthlySubmitControllerTest.testAlreadySubmitted -- Time elapsed: 0.002 s <<< FAILURE!
-java.lang.AssertionError: Status expected:<400> but was:<500>
+java.lang.AssertionError: Status expected:<400> but was:<403>
 	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
 	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
 	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
 	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
-	at com.kintai.controller.MonthlySubmitControllerTest.testAlreadySubmitted(MonthlySubmitControllerTest.java:129)
+	at com.kintai.controller.MonthlySubmitControllerTest.testAlreadySubmitted(MonthlySubmitControllerTest.java:139)
 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-com.kintai.controller.MonthlySubmitControllerTest.testFutureMonthNotAllowed -- Time elapsed: 0.003 s <<< FAILURE!
-java.lang.AssertionError: Status expected:<400> but was:<500>
+com.kintai.controller.MonthlySubmitControllerTest.testValidationErrorEmployeeIdNull -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<400> but was:<403>
 	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
 	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
 	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
 	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
-	at com.kintai.controller.MonthlySubmitControllerTest.testFutureMonthNotAllowed(MonthlySubmitControllerTest.java:112)
+	at com.kintai.controller.MonthlySubmitControllerTest.testValidationErrorEmployeeIdNull(MonthlySubmitControllerTest.java:188)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+com.kintai.controller.MonthlySubmitControllerTest.testMonthlyApproveSuccess -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<200> but was:<403>
+	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
+	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
+	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
+	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
+	at com.kintai.controller.MonthlySubmitControllerTest.testMonthlyApproveSuccess(MonthlySubmitControllerTest.java:236)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+com.kintai.controller.MonthlySubmitControllerTest.testFutureMonthNotAllowed -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<400> but was:<403>
+	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
+	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
+	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
+	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
+	at com.kintai.controller.MonthlySubmitControllerTest.testFutureMonthNotAllowed(MonthlySubmitControllerTest.java:121)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+com.kintai.controller.MonthlySubmitControllerTest.testMonthlyApproveNotSubmitted -- Time elapsed: 0.001 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<400> but was:<403>
+	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
+	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
+	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
+	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
+	at com.kintai.controller.MonthlySubmitControllerTest.testMonthlyApproveNotSubmitted(MonthlySubmitControllerTest.java:256)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+com.kintai.controller.MonthlySubmitControllerTest.testPendingVacationRequests -- Time elapsed: 0.003 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<400> but was:<403>
+	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
+	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
+	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
+	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
+	at com.kintai.controller.MonthlySubmitControllerTest.testPendingVacationRequests(MonthlySubmitControllerTest.java:213)
 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
 com.kintai.controller.MonthlySubmitControllerTest.testEmployeeNotFound -- Time elapsed: 0.002 s <<< FAILURE!
-java.lang.AssertionError: Status expected:<400> but was:<500>
+java.lang.AssertionError: Status expected:<400> but was:<403>
 	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
 	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
 	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
 	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
-	at com.kintai.controller.MonthlySubmitControllerTest.testEmployeeNotFound(MonthlySubmitControllerTest.java:143)
+	at com.kintai.controller.MonthlySubmitControllerTest.testEmployeeNotFound(MonthlySubmitControllerTest.java:157)
 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 
-com.kintai.controller.MonthlySubmitControllerTest.testMonthlySubmitSuccess -- Time elapsed: 0.008 s <<< FAILURE!
-java.lang.AssertionError: Status expected:<200> but was:<500>
+com.kintai.controller.MonthlySubmitControllerTest.testMonthlySubmitSuccess -- Time elapsed: 0.002 s <<< FAILURE!
+java.lang.AssertionError: Status expected:<200> but was:<403>
 	at org.springframework.test.util.AssertionErrors.fail(AssertionErrors.java:59)
 	at org.springframework.test.util.AssertionErrors.assertEquals(AssertionErrors.java:122)
 	at org.springframework.test.web.servlet.result.StatusResultMatchers.lambda$matcher$9(StatusResultMatchers.java:637)
 	at org.springframework.test.web.servlet.MockMvc$1.andExpect(MockMvc.java:214)
-	at com.kintai.controller.MonthlySubmitControllerTest.testMonthlySubmitSuccess(MonthlySubmitControllerTest.java:79)
+	at com.kintai.controller.MonthlySubmitControllerTest.testMonthlySubmitSuccess(MonthlySubmitControllerTest.java:83)
 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)

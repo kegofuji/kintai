@@ -13,6 +13,46 @@ class AdminScreen {
         this.reportMonthSelect = null;
         this.generateReportBtn = null;
         this.vacationManagementTableBody = null;
+        this.monthlySubmissionsTableBody = null;
+        this.monthlySubmissionStatusFilter = null;
+    }
+
+    /**
+     * 表示用の社員名を取得（右上メニューと連動）
+     * @param {Object} item
+     * @returns {string}
+     */
+    getDisplayEmployeeName(item) {
+        const nameFromTopRight = window.currentUser; // 右上の表示名
+        if (nameFromTopRight && typeof nameFromTopRight === 'string') {
+            return nameFromTopRight;
+        }
+        if (item && typeof item.employeeName === 'string' && item.employeeName.trim()) {
+            return item.employeeName;
+        }
+        // デモ環境では user1 表記でOK
+        return 'user1';
+    }
+
+    /**
+     * 汎用重複排除
+     * @param {Array} items
+     * @param {(item:any)=>string} keyFn ユニークキー生成関数
+     * @returns {Array}
+     */
+    dedupeBy(items, keyFn) {
+        const seen = new Set();
+        const result = [];
+        (items || []).forEach((item) => {
+            try {
+                const key = keyFn(item);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    result.push(item);
+                }
+            } catch (_) {}
+        });
+        return result;
     }
 
     /**
@@ -21,6 +61,191 @@ class AdminScreen {
     initDashboard() {
         // 管理者ダッシュボードの初期化処理
         console.log('管理者ダッシュボードを初期化しました');
+    }
+
+    /**
+     * 月末申請：対象社員の当月勤怠カレンダーを表示
+     * @param {number} employeeId
+     * @param {string} employeeName
+     * @param {string} yearMonth yyyy-MM
+     */
+    async showMonthlyHistory(employeeId, employeeName, yearMonth) {
+        try {
+            // 常に最新の申請月を表示するため、一覧から当該社員の最新年月を取得
+            let targetYearMonth = yearMonth;
+            try {
+                const submissions = await fetchWithAuth.handleApiCall(
+                    () => fetchWithAuth.get('/api/admin/monthly-submissions'),
+                    '月末申請一覧の取得に失敗しました'
+                );
+
+                if (submissions?.success && Array.isArray(submissions.data)) {
+                    const employeeSubs = submissions.data.filter(s => s.employeeId === employeeId);
+                    if (employeeSubs.length > 0) {
+                        // updatedAt の新しい順、なければ yearMonth の新しい順
+                        employeeSubs.sort((a, b) => {
+                            const aUpdated = a.updatedAt ? new Date(a.updatedAt) : new Date(`${a.yearMonth}-01T00:00:00`);
+                            const bUpdated = b.updatedAt ? new Date(b.updatedAt) : new Date(`${b.yearMonth}-01T00:00:00`);
+                            return bUpdated - aUpdated;
+                        });
+                        targetYearMonth = employeeSubs[0].yearMonth;
+                    }
+                }
+            } catch (e) {
+                // 取得失敗時は引数の yearMonth を使用
+            }
+
+            // フォールバック（引数も未指定の場合は当月）
+            if (!targetYearMonth) {
+                const now = new Date();
+                targetYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            }
+
+            const [year, monthStr] = targetYearMonth.split('-');
+            const month = parseInt(monthStr, 10);
+
+            // 履歴取得
+            const data = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.get(`/api/attendance/history/${employeeId}?year=${year}&month=${month}`),
+                '勤怠履歴の取得に失敗しました'
+            );
+
+            const calendarTbody = document.getElementById('adminMonthlyCalendarTbody');
+            const meta = document.getElementById('adminMonthlyHistoryMeta');
+            if (!calendarTbody || !meta) return;
+
+            meta.textContent = `社員: ${employeeName} ／ 対象月: ${targetYearMonth}`;
+            calendarTbody.innerHTML = '';
+
+            const records = data?.data ?? [];
+            // カレンダーを7列で生成
+            const date = new Date(Number(year), month - 1, 1);
+            const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+            const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+            const dayToRecord = new Map();
+            records.forEach(r => { dayToRecord.set(r.attendanceDate, r); });
+
+            // 当該社員の有給・打刻修正を取得（履歴カレンダー用のバッジ表示）
+            let vacationByDate = new Map();
+            let adjustmentByDate = new Map();
+            try {
+                const [vacationsResp, adjustmentsResp] = await Promise.all([
+                    // ユーザーAPIだが管理者でも参照用に呼び出し（認可はサーバ側ポリシーに従う）
+                    fetchWithAuth
+                        .handleApiCall(
+                            () => fetchWithAuth.get(`/api/vacation/${employeeId}`),
+                            '有給申請の取得に失敗しました'
+                        )
+                        .catch(() => null),
+                    fetchWithAuth
+                        .handleApiCall(
+                            () => fetchWithAuth.get(`/api/attendance/adjustment/${employeeId}`),
+                            '打刻修正申請の取得に失敗しました'
+                        )
+                        .catch(() => null)
+                ]);
+
+                // 有給を対象年月に整形（日付ごとに展開）
+                if (Array.isArray(vacationsResp)) {
+                    const y = Number(year);
+                    const m = Number(month) - 1; // 0-based
+                    vacationsResp.forEach(v => {
+                        if (!v.startDate || !v.endDate) return;
+                        const start = new Date(v.startDate);
+                        const end = new Date(v.endDate);
+                        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                            if (d.getFullYear() === y && d.getMonth() === m) {
+                                const status = v.status || 'PENDING';
+                                if (status !== 'CANCELLED' && status !== 'REJECTED') {
+                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                    const dd = String(d.getDate()).padStart(2, '0');
+                                    vacationByDate.set(`${d.getFullYear()}-${mm}-${dd}`, status);
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // 打刻修正（当月のみ抽出）
+                if (adjustmentsResp && adjustmentsResp.success && Array.isArray(adjustmentsResp.data)) {
+                    const y = Number(year);
+                    const m = Number(month) - 1; // 0-based
+                    adjustmentsResp.data.forEach(a => {
+                        if (!a.targetDate) return;
+                        const d = new Date(a.targetDate);
+                        if (d.getFullYear() === y && d.getMonth() === m) {
+                            const mm = String(d.getMonth() + 1).padStart(2, '0');
+                            const dd = String(d.getDate()).padStart(2, '0');
+                            adjustmentByDate.set(`${d.getFullYear()}-${mm}-${dd}`, a.status || 'PENDING');
+                        }
+                    });
+                }
+            } catch (_ignored) {
+                // 取得失敗時はバッジなし
+            }
+
+            let row = document.createElement('tr');
+            // 先頭空白（日曜=0）
+            for (let i = 0; i < firstDay.getDay(); i++) {
+                row.appendChild(document.createElement('td'));
+            }
+            for (let d = 1; d <= lastDay.getDate(); d++) {
+                const current = new Date(date.getFullYear(), date.getMonth(), d);
+                const yyyy = current.getFullYear();
+                const mm = String(current.getMonth() + 1).padStart(2, '0');
+                const dd = String(d).padStart(2, '0');
+                const key = `${yyyy}-${mm}-${dd}`;
+                const rec = dayToRecord.get(key);
+
+                const td = document.createElement('td');
+                const dayNum = `<div class="fw-bold ${current.getDay()===0?'text-danger':''} ${current.getDay()===6?'text-primary':''}">${d}</div>`;
+
+                let badgesHtml = '';
+                const vacationStatus = vacationByDate.get(key);
+                if (vacationStatus) {
+                    const isApproved = vacationStatus === 'APPROVED';
+                    const badgeClass = isApproved ? 'bg-success' : 'bg-warning';
+                    const label = isApproved ? '有給承認済' : '有給申請中';
+                    badgesHtml += `<div><span class="badge ${badgeClass} badge-sm">${label}</span></div>`;
+                }
+                const adjStatus = adjustmentByDate.get(key);
+                if (adjStatus) {
+                    const isApproved = adjStatus === 'APPROVED';
+                    const badgeClass = isApproved ? 'bg-success' : 'bg-warning';
+                    const label = isApproved ? '打刻修正承認済' : '打刻修正申請中';
+                    badgesHtml += `<div><span class="badge ${badgeClass} badge-sm">${label}</span></div>`;
+                }
+
+                let detail = '<div class="text-muted">-</div>';
+                if (rec) {
+                    const ci = rec.clockInTime ? new Date(rec.clockInTime).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) : '-';
+                    const co = rec.clockOutTime ? new Date(rec.clockOutTime).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) : '-';
+                    detail = `<div class="clock-times"><span class="clock-in-time">${ci}</span> - <span class="clock-out-time">${co}</span></div>`;
+                }
+                td.innerHTML = `${dayNum}${badgesHtml}${detail}`;
+                row.appendChild(td);
+
+                if (current.getDay() === 6) {
+                    calendarTbody.appendChild(row);
+                    row = document.createElement('tr');
+                }
+            }
+            // 末尾の埋め
+            if (row.children.length > 0) {
+                while (row.children.length < 7) row.appendChild(document.createElement('td'));
+                calendarTbody.appendChild(row);
+            }
+
+            // モーダル表示
+            const modalEl = document.getElementById('adminMonthlyHistoryModal');
+            if (modalEl) {
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
+            }
+        } catch (error) {
+            this.showAlert(error.message, 'danger');
+        }
     }
 
     /**
@@ -35,12 +260,8 @@ class AdminScreen {
     /**
      * 勤怠管理画面初期化
      */
-    initAttendance() {
-        this.initializeAttendanceElements();
-        this.setupAttendanceEventListeners();
-        this.generateAttendanceMonthOptions();
-        this.loadEmployeesForAttendance();
-    }
+    // 勤怠管理画面は廃止
+    initAttendance() {}
 
     /**
      * 申請承認画面初期化
@@ -49,6 +270,15 @@ class AdminScreen {
         this.initializeApprovalElements();
         this.setupApprovalEventListeners();
         this.loadPendingApprovals();
+    }
+
+    /**
+     * 月末申請管理画面初期化
+     */
+    initMonthlySubmissions() {
+        this.initializeMonthlySubmissionElements();
+        this.setupMonthlySubmissionEventListeners();
+        this.loadMonthlySubmissions();
     }
 
     /**
@@ -81,12 +311,7 @@ class AdminScreen {
     /**
      * 勤怠管理関連要素の初期化
      */
-    initializeAttendanceElements() {
-        this.attendanceEmployeeSelect = document.getElementById('attendanceEmployeeSelect');
-        this.attendanceMonthSelect = document.getElementById('attendanceMonthSelect');
-        this.searchAttendanceBtn = document.getElementById('searchAttendanceBtn');
-        this.adminAttendanceTableBody = document.getElementById('adminAttendanceTableBody');
-    }
+    initializeAttendanceElements() {}
 
     /**
      * 申請承認関連要素の初期化
@@ -109,6 +334,14 @@ class AdminScreen {
      */
     initializeVacationManagementElements() {
         this.vacationManagementTableBody = document.getElementById('vacationManagementTableBody');
+    }
+
+    /**
+     * 月末申請管理要素の初期化
+     */
+    initializeMonthlySubmissionElements() {
+        this.monthlySubmissionsTableBody = document.getElementById('monthlySubmissionsTableBody');
+        this.monthlySubmissionStatusFilter = document.getElementById('monthlySubmissionStatusFilter');
     }
 
     /**
@@ -136,11 +369,7 @@ class AdminScreen {
     /**
      * 勤怠管理イベントリスナー設定
      */
-    setupAttendanceEventListeners() {
-        if (this.searchAttendanceBtn) {
-            this.searchAttendanceBtn.addEventListener('click', () => this.searchAttendance());
-        }
-    }
+    setupAttendanceEventListeners() {}
 
     /**
      * 申請承認イベントリスナー設定
@@ -174,6 +403,18 @@ class AdminScreen {
      */
     setupVacationManagementEventListeners() {
         // 有給管理のイベントリスナーは必要に応じて追加
+    }
+
+    /**
+     * 月末申請管理イベントリスナー設定
+     */
+    setupMonthlySubmissionEventListeners() {
+        // 状態フィルター変更イベント
+        if (this.monthlySubmissionStatusFilter) {
+            this.monthlySubmissionStatusFilter.addEventListener('change', () => {
+                this.loadMonthlySubmissions();
+            });
+        }
     }
 
     /**
@@ -279,146 +520,106 @@ class AdminScreen {
     /**
      * 勤怠検索
      */
-    async searchAttendance() {
-        const employeeCode = this.attendanceEmployeeSelect?.value;
-        const month = this.attendanceMonthSelect?.value;
-
-        try {
-            let url = '/api/admin/attendance';
-            const params = new URLSearchParams();
-            
-            if (employeeCode) params.append('employeeCode', employeeCode);
-            if (month) params.append('month', month);
-            
-            if (params.toString()) {
-                url += '?' + params.toString();
-            }
-
-            const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.get(url),
-                '勤怠データの取得に失敗しました'
-            );
-
-            if (data.success) {
-                this.displayAttendanceData(data.data);
-            } else {
-                // APIが失敗した場合はモックデータを表示
-                const mockData = this.generateMockAttendanceData();
-                this.displayAttendanceData(mockData);
-            }
-        } catch (error) {
-            console.error('勤怠検索エラー:', error);
-            // エラーの場合はモックデータを表示
-            const mockData = this.generateMockAttendanceData();
-            this.displayAttendanceData(mockData);
-        }
-    }
+    async searchAttendance() {}
 
     /**
      * モック勤怠データ生成
      * @returns {Array} - モックデータ
      */
-    generateMockAttendanceData() {
-        const data = [];
-        const today = new Date();
-
-        for (let i = 0; i < 10; i++) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - i);
-
-            const clockIn = new Date(date);
-            clockIn.setHours(9, Math.floor(Math.random() * 30), 0, 0);
-
-            const clockOut = new Date(date);
-            clockOut.setHours(18, Math.floor(Math.random() * 60), 0, 0);
-
-            data.push({
-                attendanceId: i + 1,
-                employeeCode: 'E001',
-                employeeName: '山田太郎',
-                attendanceDate: date.toISOString().split('T')[0],
-                clockInTime: clockIn.toISOString(),
-                clockOutTime: clockOut.toISOString(),
-                lateMinutes: Math.floor(Math.random() * 30),
-                earlyLeaveMinutes: Math.floor(Math.random() * 30),
-                overtimeMinutes: Math.floor(Math.random() * 60),
-                nightWorkMinutes: Math.floor(Math.random() * 30),
-                status: '承認済'
-            });
-        }
-
-        return data;
-    }
+    generateMockAttendanceData() { return []; }
 
     /**
      * 勤怠データ表示
      * @param {Array} data - 勤怠データ
      */
-    displayAttendanceData(data) {
-        if (!this.adminAttendanceTableBody) return;
-
-        this.adminAttendanceTableBody.innerHTML = '';
-
-        if (data.length === 0) {
-            this.adminAttendanceTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">データがありません</td></tr>';
-            return;
-        }
-
-        data.forEach(record => {
-            const row = document.createElement('tr');
-            
-            const clockInTime = record.clockInTime ? 
-                new Date(record.clockInTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '-';
-            const clockOutTime = record.clockOutTime ? 
-                new Date(record.clockOutTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '-';
-
-            // 遅刻・早退・残業・深夜の表示（0:00形式に統一）
-            const lateDisplay = record.lateMinutes > 0 ? formatMinutesToTime(record.lateMinutes) : '0:00';
-            const earlyLeaveDisplay = record.earlyLeaveMinutes > 0 ? formatMinutesToTime(record.earlyLeaveMinutes) : '0:00';
-            const overtimeDisplay = record.overtimeMinutes > 0 ? formatMinutesToTime(record.overtimeMinutes) : '0:00';
-            const nightWorkDisplay = record.nightWorkMinutes > 0 ? formatMinutesToTime(record.nightWorkMinutes) : '0:00';
-
-            row.innerHTML = `
-                <td>${record.attendanceDate}</td>
-                <td>${clockInTime}</td>
-                <td>${clockOutTime}</td>
-                <td>${lateDisplay}</td>
-                <td>${earlyLeaveDisplay}</td>
-                <td>${overtimeDisplay}</td>
-                <td>${nightWorkDisplay}</td>
-                <td>${record.status}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="adminScreen.editAttendance(${record.attendanceId})">
-                        <i class="fas fa-edit"></i> 編集
-                    </button>
-                </td>
-            `;
-            this.adminAttendanceTableBody.appendChild(row);
-        });
-    }
+    displayAttendanceData(data) {}
 
     /**
      * 未承認申請読み込み
      */
     async loadPendingApprovals() {
         try {
-            const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.get('/api/admin/approvals/pending'),
-                '未承認申請の取得に失敗しました'
-            );
+            // 打刻修正（PENDING/APPROVED/REJECTED）のみ取得（この画面は「打刻修正」専用）
+            const [pending, approved, rejected] = await Promise.all([
+                fetchWithAuth
+                    .handleApiCall(
+                        () => fetchWithAuth.get('/api/admin/attendance/adjustment/status/PENDING'),
+                        '打刻修正申請（申請中）の取得に失敗しました'
+                    )
+                    .catch(() => ({ success: false })),
+                fetchWithAuth
+                    .handleApiCall(
+                        () => fetchWithAuth.get('/api/admin/attendance/adjustment/status/APPROVED'),
+                        '打刻修正申請（承認済）の取得に失敗しました'
+                    )
+                    .catch(() => ({ success: false })),
+                fetchWithAuth
+                    .handleApiCall(
+                        () => fetchWithAuth.get('/api/admin/attendance/adjustment/status/REJECTED'),
+                        '打刻修正申請（却下）の取得に失敗しました'
+                    )
+                    .catch(() => ({ success: false }))
+            ]);
 
-            if (data.success) {
-                this.displayPendingApprovals(data.data);
-            } else {
-                // APIが失敗した場合はモックデータを表示
-                const mockData = this.generateMockApprovalData();
-                this.displayPendingApprovals(mockData);
+            const list = [];
+
+            // 打刻修正: 申請中
+            if (pending?.success) {
+                (pending.data || []).forEach(item => {
+                    list.push({
+                        id: item.adjustmentRequestId,
+                        employeeName: this.getDisplayEmployeeName(item),
+                        type: '打刻修正',
+                        date: item.targetDate,
+                        reason: item.reason || '',
+                        status: '申請中',
+                        requestType: 'adjustment'
+                    });
+                });
             }
+            // 打刻修正: 承認済
+            if (approved?.success) {
+                (approved.data || []).forEach(item => {
+                    list.push({
+                        id: item.adjustmentRequestId,
+                        employeeName: this.getDisplayEmployeeName(item),
+                        type: '打刻修正',
+                        date: item.targetDate,
+                        reason: item.reason || '',
+                        status: '承認済',
+                        requestType: 'adjustment'
+                    });
+                });
+            }
+            // 打刻修正: 却下
+            if (rejected?.success) {
+                (rejected.data || []).forEach(item => {
+                    list.push({
+                        id: item.adjustmentRequestId,
+                        employeeName: this.getDisplayEmployeeName(item),
+                        type: '打刻修正',
+                        date: item.targetDate,
+                        reason: item.reason || '',
+                        status: '却下',
+                        requestType: 'adjustment'
+                    });
+                });
+            }
+
+            // この画面では有給は表示しない（有給は「有給承認・付与調整」で扱う）
+
+            if (list.length === 0) {
+                // データなしは空表示
+                this.displayPendingApprovals([]);
+                return;
+            }
+
+            // 重複排除（employeeId + date + type + status）
+            const deduped = this.dedupeBy(list, (it) => `${it.employeeName}|${it.date}|${it.type}|${it.status}`);
+            this.displayPendingApprovals(deduped);
         } catch (error) {
             console.error('未承認申請読み込みエラー:', error);
-            // エラーの場合はモックデータを表示
-            const mockData = this.generateMockApprovalData();
-            this.displayPendingApprovals(mockData);
+            this.displayPendingApprovals([]);
         }
     }
 
@@ -427,24 +628,8 @@ class AdminScreen {
      * @returns {Array} - モックデータ
      */
     generateMockApprovalData() {
-        return [
-            {
-                id: 1,
-                employeeName: '山田太郎',
-                type: '有給',
-                date: '2024-01-15',
-                reason: '私用',
-                status: '未処理'
-            },
-            {
-                id: 2,
-                employeeName: '鈴木花子',
-                type: '打刻修正',
-                date: '2024-01-14',
-                reason: '打刻ミス',
-                status: '未処理'
-            }
-        ];
+        // モックは使用しない（空配列を返す）
+        return [];
     }
 
     /**
@@ -463,20 +648,25 @@ class AdminScreen {
 
         data.forEach(approval => {
             const row = document.createElement('tr');
+            // 状態が承認済/却下ならグレーアウト
+            if (approval.status === '承認済' || approval.status === '却下' || approval.status === 'APPROVED' || approval.status === 'REJECTED') {
+                row.classList.add('table-secondary');
+            }
+            const isPending = approval.status === '申請中' || approval.status === 'PENDING';
+            const actionHtml = isPending
+                ? `
+                    <button class="btn btn-sm btn-success me-1 approve-btn" data-request-id="${approval.id}" data-type="${approval.requestType || 'adjustment'}">承認</button>
+                    <button class="btn btn-sm btn-danger reject-btn" data-request-id="${approval.id}" data-type="${approval.requestType || 'adjustment'}">却下</button>
+                  `
+                : '<span class="text-muted">処理済</span>';
+
             row.innerHTML = `
                 <td>${approval.employeeName}</td>
                 <td>${approval.type}</td>
                 <td>${approval.date}</td>
                 <td>${approval.reason}</td>
-                <td>${approval.status}</td>
-                <td>
-                    <button class="btn btn-sm btn-success me-1" onclick="adminScreen.approveRequest(${approval.id})">
-                        <i class="fas fa-check"></i> 承認
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="adminScreen.rejectRequest(${approval.id})">
-                        <i class="fas fa-times"></i> 却下
-                    </button>
-                </td>
+                <td><span class="badge ${approval.status==='承認済' || approval.status==='APPROVED' ? 'bg-secondary' : (approval.status==='却下' || approval.status==='REJECTED' ? 'bg-danger' : 'bg-warning')}">${approval.status}</span></td>
+                <td>${actionHtml}</td>
             `;
             this.approvalsTableBody.appendChild(row);
         });
@@ -495,6 +685,17 @@ class AdminScreen {
         }
 
         try {
+            // 月末申請が承認済みか確認
+            const statusResp = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.get(`/api/attendance/monthly-status?employeeId=${employeeId}&yearMonth=${month}`),
+                '申請状態の確認に失敗しました'
+            );
+            const submissionStatus = statusResp?.data?.submissionStatus || statusResp?.submissionStatus;
+            if (submissionStatus !== 'APPROVED') {
+                this.showAlert('PDF出力は月末申請が承認済の場合のみ可能です', 'warning');
+                return;
+            }
+
             // レポート生成APIを呼び出し
             const data = await fetchWithAuth.handleApiCall(
                 () => fetchWithAuth.post('/api/reports/generate', {
@@ -505,7 +706,6 @@ class AdminScreen {
             );
 
             if (data.success && data.pdfUrl) {
-                // PDFのURLから直接ダウンロード
                 const filename = `attendance_${employeeId}_${month}.pdf`;
                 await fetchWithAuth.downloadFile(data.pdfUrl, filename);
                 this.showAlert('レポートをダウンロードしました', 'success');
@@ -522,23 +722,88 @@ class AdminScreen {
      */
     async loadVacationManagementData() {
         try {
-            const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.get('/api/admin/vacation-management'),
-                '有給管理データの取得に失敗しました'
-            );
+            // ステータス別に取得して結合（申請中/承認済/却下）
+            const [vPending, vApproved, vRejected] = await Promise.all([
+                fetchWithAuth
+                    .handleApiCall(
+                        () => fetchWithAuth.get('/api/admin/vacation/status/PENDING'),
+                        '有給申請（申請中）の取得に失敗しました'
+                    )
+                    .catch(() => ({ success: false })),
+                fetchWithAuth
+                    .handleApiCall(
+                        () => fetchWithAuth.get('/api/admin/vacation/status/APPROVED'),
+                        '有給申請（承認済）の取得に失敗しました'
+                    )
+                    .catch(() => ({ success: false })),
+                fetchWithAuth
+                    .handleApiCall(
+                        () => fetchWithAuth.get('/api/admin/vacation/status/REJECTED'),
+                        '有給申請（却下）の取得に失敗しました'
+                    )
+                    .catch(() => ({ success: false }))
+            ]);
 
-            if (data.success) {
-                this.displayVacationManagementData(data.data);
-            } else {
-                // APIが失敗した場合はモックデータを表示
-                const mockData = this.generateMockVacationManagementData();
-                this.displayVacationManagementData(mockData);
+            const list = [];
+            const pushItems = (src, statusText) => {
+                (src?.data || []).forEach(item => {
+                    list.push({
+                        employeeId: item.employeeId,
+                        vacationId: item.vacationId,
+                        startDate: item.startDate,
+                        endDate: item.endDate,
+                        reason: item.reason || '',
+                        status: statusText
+                    });
+                });
+            };
+            if (vPending?.success) pushItems(vPending, 'PENDING');
+            if (vApproved?.success) pushItems(vApproved, 'APPROVED');
+            if (vRejected?.success) pushItems(vRejected, 'REJECTED');
+
+            if (list.length === 0) {
+                // フォールバック: 社員ごとの申請一覧を集約
+                try {
+                    const employeesResp = await fetchWithAuth.handleApiCall(
+                        () => fetchWithAuth.get('/api/admin/employees'),
+                        '社員一覧の取得に失敗しました'
+                    );
+                    const employees = employeesResp?.data || [];
+                    const aggregated = [];
+                    await Promise.all(
+                        employees.map(async (emp) => {
+                            try {
+                                const vr = await fetchWithAuth.handleApiCall(
+                                    () => fetchWithAuth.get(`/api/vacation/${emp.employeeId}`),
+                                    '有給申請の取得に失敗しました'
+                                );
+                                const requests = Array.isArray(vr) ? vr : [];
+                                requests.forEach(item => {
+                                    aggregated.push({
+                                        employeeId: item.employeeId,
+                                        vacationId: item.vacationId,
+                                        startDate: item.startDate,
+                                        endDate: item.endDate,
+                                        reason: item.reason || '',
+                                        status: item.status || 'PENDING'
+                                    });
+                                });
+                            } catch (_) {}
+                        })
+                    );
+                    this.displayVacationManagementData(aggregated);
+                } catch (e) {
+                    this.displayVacationManagementData([]);
+                }
+                return;
             }
+
+            // 重複排除（employeeId + startDate + endDate + status）
+            const deduped = this.dedupeBy(list, (it) => `${it.employeeId}|${it.startDate}|${it.endDate || ''}|${it.status}`);
+            this.displayVacationManagementData(deduped);
         } catch (error) {
             console.error('有給管理データ読み込みエラー:', error);
-            // エラーの場合はモックデータを表示
-            const mockData = this.generateMockVacationManagementData();
-            this.displayVacationManagementData(mockData);
+            this.displayVacationManagementData([]);
         }
     }
 
@@ -575,20 +840,30 @@ class AdminScreen {
 
         data.forEach(item => {
             const row = document.createElement('tr');
+            const dateDisplay = item.startDate === item.endDate || !item.endDate
+                ? item.startDate
+                : `${item.startDate} 〜 ${item.endDate}`;
+            const status = (item.status || 'PENDING').toUpperCase();
+            const badgeClass = status === 'APPROVED' ? 'bg-secondary' : status === 'REJECTED' ? 'bg-danger' : 'bg-warning';
+            const isPending = status === 'PENDING';
+            if (!isPending) row.classList.add('table-secondary');
+
+            const vacationId = item.vacationId ?? item.id;
+
+            const actionHtml = isPending
+                ? `
+                    <button class="btn btn-sm btn-success me-1" onclick="adminScreen.approveVacationRequest(${vacationId})">承認</button>
+                    <button class="btn btn-sm btn-danger" onclick="adminScreen.rejectVacationRequest(${vacationId})">却下</button>
+                  `
+                : '<span class="text-muted">処理済</span>';
+
             row.innerHTML = `
-                <td>${item.employeeName}</td>
-                <td>${item.type}</td>
-                <td>${item.date}</td>
-                <td>${item.reason}</td>
-                <td>${item.status}</td>
-                <td>
-                    <button class="btn btn-sm btn-success me-1" onclick="adminScreen.approveVacationRequest(${item.id})">
-                        <i class="fas fa-check"></i> 承認
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="adminScreen.rejectVacationRequest(${item.id})">
-                        <i class="fas fa-times"></i> 却下
-                    </button>
-                </td>
+                <td>${this.getDisplayEmployeeName(item)}</td>
+                <td>有給申請</td>
+                <td>${dateDisplay}</td>
+                <td>${item.reason ?? ''}</td>
+                <td><span class="badge ${badgeClass}">${status === 'APPROVED' ? '承認済' : status === 'REJECTED' ? '却下' : '申請中'}</span></td>
+                <td>${actionHtml}</td>
             `;
             this.vacationManagementTableBody.appendChild(row);
         });
@@ -634,15 +909,201 @@ class AdminScreen {
      * 申請承認
      * @param {number} requestId - 申請ID
      */
-    async approveRequest(requestId) {
+    async approveRequest(requestId, requestType) {
         try {
+            // 承認前の確認
+            let confirmMessage = '承認しますか？';
+            if (requestType === 'vacation') confirmMessage = 'この有給申請を承認しますか？';
+            if (requestType === 'adjustment') confirmMessage = 'この打刻修正申請を承認しますか？';
+            if (requestType === 'monthly') confirmMessage = 'この月末申請を承認しますか？';
+            if (!confirm(confirmMessage)) return;
+            let apiEndpoint = '';
+            let requestData = {};
+
+            switch (requestType) {
+                case 'adjustment':
+                    apiEndpoint = `/api/admin/attendance/adjustment/approve/${requestId}`;
+                    requestData = null;
+                    break;
+                case 'vacation':
+                    apiEndpoint = '/api/admin/vacation/approve';
+                    requestData = { vacationId: requestId, approved: true };
+                    break;
+                case 'monthly':
+                    // monthlyはemployeeIdとyearMonthが必要。idに埋め込んだ形式を分解
+                    if (typeof requestId === 'string' && requestId.includes('-')) {
+                        const [empIdStr, yearMonth] = requestId.split('-');
+                        apiEndpoint = '/api/admin/monthly-submissions/approve';
+                        requestData = { employeeId: Number(empIdStr), yearMonth, approved: true };
+                    } else {
+                        throw new Error('月末申請の識別子が不正です');
+                    }
+                    break;
+                default:
+                    throw new Error('不明な申請種別です');
+            }
+
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post('/api/admin/approvals/approve', { requestId, approved: true }),
+                () => (requestData ? fetchWithAuth.post(apiEndpoint, requestData) : fetchWithAuth.post(apiEndpoint)),
                 '承認に失敗しました'
             );
 
-            this.showAlert(data.message, 'success');
+            this.showAlert(data.message || '承認しました', 'success');
             await this.loadPendingApprovals();
+        } catch (error) {
+            this.showAlert(error.message, 'danger');
+        }
+    }
+
+    /**
+     * 月末申請一覧読み込み
+     */
+    async loadMonthlySubmissions() {
+        if (!this.monthlySubmissionsTableBody) return;
+
+        try {
+            const status = this.monthlySubmissionStatusFilter?.value || '';
+            const url = status ? `/api/admin/monthly-submissions?status=${status}` : '/api/admin/monthly-submissions';
+            
+            const data = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.get(url),
+                '月末申請一覧の取得に失敗しました'
+            );
+
+            if (data.success) {
+                this.displayMonthlySubmissions(data.data);
+            } else {
+                this.showAlert(data.message, 'danger');
+            }
+        } catch (error) {
+            this.showAlert(error.message, 'danger');
+        }
+    }
+
+    /**
+     * 月末申請一覧表示
+     * @param {Array} submissions - 月末申請一覧
+     */
+    displayMonthlySubmissions(submissions) {
+        if (!this.monthlySubmissionsTableBody) return;
+
+        this.monthlySubmissionsTableBody.innerHTML = '';
+
+        if (submissions.length === 0) {
+            this.monthlySubmissionsTableBody.innerHTML = 
+                '<tr><td colspan="6" class="text-center text-muted">月末申請がありません</td></tr>';
+            return;
+        }
+
+        submissions.forEach(submission => {
+            const row = document.createElement('tr');
+            
+            // 状態に応じたスタイル設定
+            let statusClass = '';
+            let statusText = submission.submissionStatusDisplay;
+            
+            switch (submission.submissionStatus) {
+                case 'SUBMITTED':
+                    statusClass = 'text-warning';
+                    break;
+                case 'APPROVED':
+                    statusClass = 'text-success';
+                    break;
+                case 'REJECTED':
+                    statusClass = 'text-danger';
+                    break;
+                default:
+                    statusClass = 'text-secondary';
+            }
+
+            // 操作ボタンの生成 + PDFダウンロード（承認済のみ）
+            const canApprove = submission.submissionStatus === 'SUBMITTED';
+            const canDownload = submission.submissionStatus === 'APPROVED';
+            const actionButtons = `
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-success btn-sm" ${canApprove ? '' : 'disabled'}
+                            onclick="adminScreen.approveMonthlySubmission(${submission.employeeId}, '${submission.yearMonth}', true)">承認</button>
+                    <button class="btn btn-danger btn-sm" ${canApprove ? '' : 'disabled'}
+                            onclick="adminScreen.approveMonthlySubmission(${submission.employeeId}, '${submission.yearMonth}', false)">却下</button>
+                    <button class="btn btn-outline-primary btn-sm" ${canDownload ? '' : 'disabled'}
+                            onclick="adminScreen.downloadApprovedMonthlyPdf(${submission.employeeId}, '${submission.yearMonth}')">PDF</button>
+                </div>
+            `;
+
+            row.innerHTML = `
+                <td>${submission.employeeName}</td>
+                <td>${submission.yearMonth}</td>
+                <td><span class="${statusClass}">${statusText}</span></td>
+                <td>${new Date(submission.submittedAt ?? submission.updatedAt).toLocaleDateString('ja-JP')}</td>
+                <td>${actionButtons}</td>
+                <td>
+                    <button class="btn btn-outline-secondary btn-sm" 
+                            onclick="adminScreen.showMonthlyHistory(${submission.employeeId}, '${submission.employeeName}', '${submission.yearMonth}')">
+                        履歴
+                    </button>
+                </td>
+            `;
+
+            this.monthlySubmissionsTableBody.appendChild(row);
+        });
+    }
+
+    /**
+     * 承認済み月末申請のPDFダウンロード
+     */
+    async downloadApprovedMonthlyPdf(employeeId, yearMonth) {
+        try {
+            const statusResp = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.get(`/api/attendance/monthly-status?employeeId=${employeeId}&yearMonth=${yearMonth}`),
+                '申請状態の確認に失敗しました'
+            );
+            const submissionStatus = statusResp?.data?.submissionStatus || statusResp?.submissionStatus;
+            if (submissionStatus !== 'APPROVED') {
+                this.showAlert('承認済みでないためPDFを出力できません', 'warning');
+                return;
+            }
+
+            const data = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.post('/api/reports/generate', { employeeId, yearMonth }),
+                'レポート生成に失敗しました'
+            );
+            if (data.success && data.pdfUrl) {
+                const filename = `attendance_${employeeId}_${yearMonth}.pdf`;
+                await fetchWithAuth.downloadFile(data.pdfUrl, filename);
+                this.showAlert('レポートをダウンロードしました', 'success');
+            } else {
+                this.showAlert(data.message || 'レポート生成に失敗しました', 'danger');
+            }
+        } catch (error) {
+            this.showAlert(error.message, 'danger');
+        }
+    }
+
+    /**
+     * 月末申請承認/却下
+     * @param {number} employeeId - 従業員ID
+     * @param {string} yearMonth - 年月
+     * @param {boolean} approved - 承認する場合true
+     */
+    async approveMonthlySubmission(employeeId, yearMonth, approved) {
+        try {
+            // 承認/却下の確認
+            if (approved) {
+                if (!confirm('この月末申請を承認しますか？')) return;
+            } else {
+                if (!confirm('この月末申請を却下しますか？')) return;
+            }
+            const data = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.post('/api/admin/monthly-submissions/approve', {
+                    employeeId: employeeId,
+                    yearMonth: yearMonth,
+                    approved: approved
+                }),
+                `${approved ? '承認' : '却下'}に失敗しました`
+            );
+
+            this.showAlert(data.message, 'success');
+            await this.loadMonthlySubmissions();
         } catch (error) {
             this.showAlert(error.message, 'danger');
         }
@@ -652,14 +1113,45 @@ class AdminScreen {
      * 申請却下
      * @param {number} requestId - 申請ID
      */
-    async rejectRequest(requestId) {
+    async rejectRequest(requestId, requestType) {
         try {
+            let apiEndpoint = '';
+            let requestData = {};
+
+            switch (requestType) {
+                case 'adjustment': {
+                    const comment = prompt('却下理由を入力してください（必須）');
+                    if (!comment || !comment.trim()) {
+                        this.showAlert('却下理由は必須です', 'warning');
+                        return;
+                    }
+                    apiEndpoint = `/api/admin/attendance/adjustment/reject/${requestId}?comment=${encodeURIComponent(comment.trim())}`;
+                    requestData = null;
+                    break;
+                }
+                case 'vacation':
+                    apiEndpoint = '/api/admin/vacation/approve';
+                    requestData = { vacationId: requestId, approved: false };
+                    break;
+                case 'monthly':
+                    if (typeof requestId === 'string' && requestId.includes('-')) {
+                        const [empIdStr, yearMonth] = requestId.split('-');
+                        apiEndpoint = '/api/admin/monthly-submissions/approve';
+                        requestData = { employeeId: Number(empIdStr), yearMonth, approved: false };
+                    } else {
+                        throw new Error('月末申請の識別子が不正です');
+                    }
+                    break;
+                default:
+                    throw new Error('不明な申請種別です');
+            }
+
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post('/api/admin/approvals/approve', { requestId, approved: false }),
+                () => (requestData ? fetchWithAuth.post(apiEndpoint, requestData) : fetchWithAuth.post(apiEndpoint)),
                 '却下に失敗しました'
             );
 
-            this.showAlert(data.message, 'success');
+            this.showAlert(data.message || '却下しました', 'warning');
             await this.loadPendingApprovals();
         } catch (error) {
             this.showAlert(error.message, 'danger');
@@ -672,8 +1164,10 @@ class AdminScreen {
      */
     async approveVacationRequest(requestId) {
         try {
+            if (!confirm('この有給申請を承認しますか？')) return;
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post('/api/admin/vacation/approve', { requestId, approved: true }),
+                // コントローラのリクエスト型に合わせてvacationIdを送る
+                () => fetchWithAuth.post('/api/admin/vacation/approve', { vacationId: requestId, approved: true }),
                 '有給申請の承認に失敗しました'
             );
 
@@ -690,8 +1184,10 @@ class AdminScreen {
      */
     async rejectVacationRequest(requestId) {
         try {
+            if (!confirm('この有給申請を却下しますか？')) return;
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post('/api/admin/vacation/approve', { requestId, approved: false }),
+                // コントローラのリクエスト型に合わせてvacationIdを送る
+                () => fetchWithAuth.post('/api/admin/vacation/approve', { vacationId: requestId, approved: false }),
                 '有給申請の却下に失敗しました'
             );
 
@@ -996,8 +1492,9 @@ class AdminScreen {
                     requestData = { vacationId: requestId, approved: true };
                     break;
                 case 'adjustment':
-                    apiEndpoint = '/api/admin/adjustment/approve';
-                    requestData = { adjustmentId: requestId, approved: true };
+                    // 管理者承認（パスパラメータ）
+                    apiEndpoint = `/api/admin/attendance/adjustment/approve/${requestId}`;
+                    requestData = null;
                     break;
                 case 'monthly':
                     apiEndpoint = '/api/admin/monthly/approve';
@@ -1008,7 +1505,7 @@ class AdminScreen {
             }
 
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post(apiEndpoint, requestData),
+                () => requestData ? fetchWithAuth.post(apiEndpoint, requestData) : fetchWithAuth.post(apiEndpoint),
                 '申請の承認に失敗しました'
             );
 
@@ -1025,9 +1522,8 @@ class AdminScreen {
      * @param {string} requestType - 申請種別
      */
     async rejectRequest(requestId, requestType) {
-        if (!confirm('この申請を却下しますか？')) {
-            return;
-        }
+        // 共通確認
+        if (!confirm('この申請を却下しますか？')) return;
 
         try {
             let apiEndpoint = '';
@@ -1035,14 +1531,22 @@ class AdminScreen {
 
             switch (requestType) {
                 case 'vacation':
+                    if (!confirm('この有給申請を却下しますか？')) return;
                     apiEndpoint = '/api/admin/vacation/approve';
                     requestData = { vacationId: requestId, approved: false };
                     break;
                 case 'adjustment':
-                    apiEndpoint = '/api/admin/adjustment/approve';
-                    requestData = { adjustmentId: requestId, approved: false };
+                    // 却下コメントの入力
+                    if (!confirm('この打刻修正申請を却下しますか？')) return;
+                    const comment = prompt('却下理由を入力してください（必須）');
+                    if (!comment || !comment.trim()) {
+                        throw new Error('却下理由は必須です');
+                    }
+                    apiEndpoint = `/api/admin/attendance/adjustment/reject/${requestId}?comment=` + encodeURIComponent(comment.trim());
+                    requestData = null;
                     break;
                 case 'monthly':
+                    if (!confirm('この月末申請を却下しますか？')) return;
                     apiEndpoint = '/api/admin/monthly/approve';
                     requestData = { monthlyId: requestId, approved: false };
                     break;
@@ -1051,7 +1555,7 @@ class AdminScreen {
             }
 
             const data = await fetchWithAuth.handleApiCall(
-                () => fetchWithAuth.post(apiEndpoint, requestData),
+                () => requestData ? fetchWithAuth.post(apiEndpoint, requestData) : fetchWithAuth.post(apiEndpoint),
                 '申請の却下に失敗しました'
             );
 

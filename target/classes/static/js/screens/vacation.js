@@ -8,6 +8,7 @@ class VacationScreen {
         this.vacationEndDate = null;
         this.vacationReason = null;
         this.remainingVacationDays = null;
+        this.listenersBound = false;
     }
 
     /**
@@ -34,6 +35,7 @@ class VacationScreen {
      * イベントリスナー設定
      */
     setupEventListeners() {
+        if (this.listenersBound) return;
         if (this.vacationForm) {
             this.vacationForm.addEventListener('submit', (e) => this.handleVacationSubmit(e));
         }
@@ -46,6 +48,7 @@ class VacationScreen {
         if (this.vacationEndDate) {
             this.vacationEndDate.addEventListener('change', () => this.validateDateRange());
         }
+        this.listenersBound = true;
     }
 
     /**
@@ -84,11 +87,11 @@ class VacationScreen {
         e.preventDefault();
 
         const startDate = this.vacationStartDate.value;
-        const endDate = this.vacationEndDate.value;
+        const endDate = this.vacationEndDate && this.vacationEndDate.value ? this.vacationEndDate.value : '';
         const reason = this.vacationReason.value;
 
         if (!startDate || !endDate || !reason) {
-            this.showAlert('すべての項目を入力してください', 'warning');
+            this.showAlert('すべての項目（開始日・終了日・理由）を入力してください', 'warning');
             return;
         }
 
@@ -101,6 +104,11 @@ class VacationScreen {
             this.showAlert('従業員IDが取得できません', 'danger');
             return;
         }
+
+        // 事前確認
+        const rangeText = startDate === endDate ? startDate : `${startDate} 〜 ${endDate}`;
+        const confirmed = window.confirm(`有給申請（${rangeText}）を送信します。よろしいですか？`);
+        if (!confirmed) return;
 
         try {
             const data = await fetchWithAuth.handleApiCall(
@@ -118,6 +126,23 @@ class VacationScreen {
             
             // 残有給日数を再読み込み
             await this.loadRemainingVacationDays();
+
+            // 履歴カレンダーを即時反映（存在する場合）
+            try {
+                if (window.historyScreen && typeof window.historyScreen.loadCalendarData === 'function') {
+                    await window.historyScreen.loadCalendarData();
+                    if (typeof window.historyScreen.generateCalendar === 'function') {
+                        window.historyScreen.generateCalendar();
+                    }
+                }
+                // 旧カレンダー画面にも反映（存在する場合）
+                if (window.calendarScreen && typeof window.calendarScreen.loadCalendarData === 'function') {
+                    await window.calendarScreen.loadCalendarData();
+                    if (typeof window.calendarScreen.generateCalendar === 'function') {
+                        window.calendarScreen.generateCalendar();
+                    }
+                }
+            } catch (_) { /* no-op */ }
         } catch (error) {
             this.showAlert(error.message, 'danger');
         }
@@ -129,7 +154,7 @@ class VacationScreen {
      */
     validateDateRange() {
         const startDate = this.vacationStartDate.value;
-        const endDate = this.vacationEndDate.value;
+        const endDate = this.vacationEndDate && this.vacationEndDate.value ? this.vacationEndDate.value : '';
 
         if (!startDate || !endDate) {
             return true; // まだ入力中

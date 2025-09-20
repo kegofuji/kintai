@@ -1,6 +1,8 @@
 spring:
   application:
     name: kintai-test
+  profiles:
+    active: test
   datasource:
     url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
@@ -15,13 +17,13 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
         format_sql: false
   flyway:
-    enabled: false
+    enabled: true
   h2:
     console:
       enabled: true
 
 server:
-  port: 0
+  port: 8080
 
 logging:
   level:

@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -578,6 +579,135 @@ class AttendanceServiceTest {
         
         // attendance_fixed_flagとsubmission_statusが更新されることを確認
         verify(attendanceRecordRepository).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("月末申請却下成功テスト")
+    void testRejectMonthlySubmission_Success() {
+        // Given
+        Long employeeId = 1L;
+        String yearMonth = "2025-01";
+        
+        // 申請済みの勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setSubmissionStatus(SubmissionStatus.SUBMITTED);
+        record1.setAttendanceFixedFlag(false);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(employeeId, 2025, 1)).thenReturn(records);
+        when(attendanceRecordRepository.saveAll(anyList())).thenReturn(records);
+        
+        // When
+        ClockResponse response = attendanceService.rejectMonthlySubmission(employeeId, yearMonth);
+        
+        // Then
+        assertTrue(response.isSuccess());
+        assertEquals("2025-01の勤怠申請を却下しました", response.getMessage());
+        assertNotNull(response.getData());
+        assertTrue(response.getData() instanceof ClockResponse.MonthlySubmitData);
+        ClockResponse.MonthlySubmitData monthlyData = (ClockResponse.MonthlySubmitData) response.getData();
+        assertEquals(employeeId, monthlyData.getEmployeeId());
+        assertEquals(yearMonth, monthlyData.getYearMonth());
+        assertEquals(1, monthlyData.getFixedCount());
+        
+        // submission_statusがREJECTEDに更新されることを確認
+        verify(attendanceRecordRepository).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("月末申請却下エラーテスト - 申請されていない")
+    void testRejectMonthlySubmission_NotSubmitted() {
+        // Given
+        Long employeeId = 1L;
+        String yearMonth = "2025-01";
+        
+        // 未申請の勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setSubmissionStatus(SubmissionStatus.NOT_SUBMITTED);
+        record1.setAttendanceFixedFlag(false);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(employeeId, 2025, 1)).thenReturn(records);
+        
+        // When & Then
+        AttendanceException exception = assertThrows(AttendanceException.class, () -> {
+            attendanceService.rejectMonthlySubmission(employeeId, yearMonth);
+        });
+        
+        assertEquals("NOT_SUBMITTED", exception.getErrorCode());
+        assertEquals("申請されていません", exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("月末申請却下エラーテスト - 既に確定済み")
+    void testRejectMonthlySubmission_AlreadyFixed() {
+        // Given
+        Long employeeId = 1L;
+        String yearMonth = "2025-01";
+        
+        // 既に確定済みの勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setSubmissionStatus(SubmissionStatus.APPROVED);
+        record1.setAttendanceFixedFlag(true);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(employeeId, 2025, 1)).thenReturn(records);
+        
+        // When & Then
+        AttendanceException exception = assertThrows(AttendanceException.class, () -> {
+            attendanceService.rejectMonthlySubmission(employeeId, yearMonth);
+        });
+        
+        assertEquals("ALREADY_FIXED", exception.getErrorCode());
+        assertEquals("既に確定済みです", exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("月末申請状態取得成功テスト")
+    void testGetMonthlySubmissionStatus_Success() {
+        // Given
+        Long employeeId = 1L;
+        String yearMonth = "2025-01";
+        
+        // 申請済みの勤怠記録を作成
+        AttendanceRecord record1 = new AttendanceRecord(1L, LocalDate.of(2025, 1, 1));
+        record1.setClockInTime(LocalDateTime.of(2025, 1, 1, 9, 0));
+        record1.setClockOutTime(LocalDateTime.of(2025, 1, 1, 18, 0));
+        record1.setSubmissionStatus(SubmissionStatus.SUBMITTED);
+        record1.setAttendanceFixedFlag(false);
+        
+        List<AttendanceRecord> records = Arrays.asList(record1);
+        
+        when(employeeRepository.findByEmployeeId(employeeId)).thenReturn(Optional.of(testEmployee));
+        when(attendanceRecordRepository.findByEmployeeAndMonth(employeeId, 2025, 1)).thenReturn(records);
+        
+        // When
+        ClockResponse response = attendanceService.getMonthlySubmissionStatus(employeeId, yearMonth);
+        
+        // Then
+        assertTrue(response.isSuccess());
+        assertEquals("2025-01の申請状態: 申請中", response.getMessage());
+        assertNotNull(response.getData());
+        assertTrue(response.getData() instanceof Map);
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getData();
+        assertEquals("SUBMITTED", data.get("submissionStatus"));
+        assertEquals(false, data.get("attendanceFixedFlag"));
+        assertEquals(yearMonth, data.get("yearMonth"));
+        assertEquals(1, data.get("recordCount"));
     }
     
     @Test

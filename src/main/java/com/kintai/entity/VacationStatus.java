@@ -6,7 +6,8 @@ package com.kintai.entity;
 public enum VacationStatus {
     PENDING("申請中"),
     APPROVED("承認"),
-    REJECTED("却下");
+    REJECTED("却下"),
+    CANCELLED("取消");
     
     private final String displayName;
     

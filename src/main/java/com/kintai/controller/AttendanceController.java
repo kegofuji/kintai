@@ -111,6 +111,91 @@ public class AttendanceController {
     }
     
     /**
+     * 月末申請却下API
+     * @param request 月末申請リクエスト
+     * @return 却下レスポンス
+     */
+    @PostMapping("/monthly-reject")
+    public ResponseEntity<ClockResponse> monthlyReject(@Valid @RequestBody MonthlySubmitRequest request) {
+        try {
+            ClockResponse response = attendanceService.rejectMonthlySubmission(request.getEmployeeId(), request.getYearMonth());
+            if (!response.isSuccess()) {
+                return ResponseEntity.badRequest().body(response);
+            }
+            return ResponseEntity.ok(response);
+        } catch (AttendanceException e) {
+            ClockResponse errorResponse = new ClockResponse(false, e.getErrorCode(), e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            ClockResponse errorResponse = new ClockResponse(false, "INTERNAL_ERROR", "内部エラーが発生しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    /**
+     * 月末申請取消API
+     * @param request 月末申請リクエスト
+     * @return 取消レスポンス
+     */
+    @PostMapping("/monthly-cancel")
+    public ResponseEntity<ClockResponse> monthlyCancel(@Valid @RequestBody MonthlySubmitRequest request) {
+        try {
+            ClockResponse response = attendanceService.cancelMonthlySubmission(request.getEmployeeId(), request.getYearMonth());
+            if (!response.isSuccess()) {
+                return ResponseEntity.badRequest().body(response);
+            }
+            return ResponseEntity.ok(response);
+        } catch (AttendanceException e) {
+            ClockResponse errorResponse = new ClockResponse(false, e.getErrorCode(), e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            ClockResponse errorResponse = new ClockResponse(false, "INTERNAL_ERROR", "内部エラーが発生しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    /**
+     * 月末申請状態取得API
+     * @param employeeId 従業員ID
+     * @param yearMonth 年月
+     * @return 申請状態レスポンス
+     */
+    @GetMapping("/monthly-status/{employeeId}")
+    public ResponseEntity<ClockResponse> getMonthlySubmissionStatus(
+            @PathVariable Long employeeId,
+            @RequestParam String yearMonth) {
+        try {
+            ClockResponse response = attendanceService.getMonthlySubmissionStatus(employeeId, yearMonth);
+            return ResponseEntity.ok(response);
+        } catch (AttendanceException e) {
+            ClockResponse errorResponse = new ClockResponse(false, e.getErrorCode(), e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            ClockResponse errorResponse = new ClockResponse(false, "INTERNAL_ERROR", "内部エラーが発生しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    /**
+     * 月末申請状態取得API（互換用: クエリパラメータでemployeeIdを受ける）
+     */
+    @GetMapping("/monthly-status")
+    public ResponseEntity<ClockResponse> getMonthlySubmissionStatusCompat(
+            @RequestParam Long employeeId,
+            @RequestParam String yearMonth) {
+        try {
+            ClockResponse response = attendanceService.getMonthlySubmissionStatus(employeeId, yearMonth);
+            return ResponseEntity.ok(response);
+        } catch (AttendanceException e) {
+            ClockResponse errorResponse = new ClockResponse(false, e.getErrorCode(), e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            ClockResponse errorResponse = new ClockResponse(false, "INTERNAL_ERROR", "内部エラーが発生しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    /**
      * ヘルスチェックAPI
      * @return ヘルスステータス
      */

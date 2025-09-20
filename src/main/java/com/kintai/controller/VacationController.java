@@ -18,6 +18,8 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 /**
  * 有給休暇申請コントローラー
@@ -65,7 +67,7 @@ public class VacationController {
             @PathVariable Long vacationId,
             @Valid @RequestBody StatusUpdateRequest request) {
         try {
-            VacationStatus status = VacationStatus.valueOf(request.getStatus().toUpperCase());
+            VacationStatus status = parseVacationStatus(request.getStatus());
             VacationRequestDto response = vacationService.updateVacationStatus(vacationId, status);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -77,6 +79,40 @@ public class VacationController {
         } catch (Exception e) {
             VacationRequestDto errorResponse = new VacationRequestDto(false, "INTERNAL_ERROR", "内部エラーが発生しました");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    /**
+     * 受信したステータス文字列を寛容に解釈して `VacationStatus` に変換する。
+     * 想定揺れ: cancel/canceled/cancelled/取消/キャンセル 等
+     */
+    private VacationStatus parseVacationStatus(String raw) {
+        if (raw == null) throw new IllegalArgumentException("status is null");
+        String normalized = raw.trim().toUpperCase();
+
+        // よくある表記揺れを吸収
+        switch (normalized) {
+            case "CANCEL":
+            case "CANCELED": // 1つL
+            case "CANCELLED": // 2つL
+            case "取消":
+            case "ｷｬﾝｾﾙ":
+            case "キャンセル":
+                return VacationStatus.CANCELLED;
+            case "APPROVE":
+            case "APPROVED":
+            case "承認":
+                return VacationStatus.APPROVED;
+            case "REJECT":
+            case "REJECTED":
+            case "却下":
+                return VacationStatus.REJECTED;
+            case "PENDING":
+            case "申請中":
+                return VacationStatus.PENDING;
+            default:
+                // 直接Enum名に一致するか最終チェック
+                return VacationStatus.valueOf(normalized);
         }
     }
     
@@ -95,6 +131,28 @@ public class VacationController {
         }
     }
     
+    /**
+     * 残有給日数取得API（簡易実装）
+     * @param employeeId 従業員ID
+     * @return { success, remainingDays }
+     */
+    @GetMapping("/remaining/{employeeId}")
+    public ResponseEntity<Map<String, Object>> getRemainingDays(@PathVariable Long employeeId) {
+        try {
+            int remaining = vacationService.getRemainingVacationDays(employeeId);
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", true);
+            body.put("remainingDays", remaining);
+            return ResponseEntity.ok(body);
+        } catch (Exception e) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("success", false);
+            body.put("errorCode", "INTERNAL_ERROR");
+            body.put("message", "残有給日数の取得に失敗しました");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+        }
+    }
+
     /**
      * CSRFトークン取得API
      * @param request HTTPリクエスト
@@ -116,9 +174,13 @@ public class VacationController {
      * 有給申請リクエスト内部クラス
      */
     public static class VacationRequestRequest {
+        @NotNull(message = "従業員IDは必須です")
         private Long employeeId;
+        @NotNull(message = "開始日は必須です")
         private LocalDate startDate;
+        @NotNull(message = "終了日は必須です")
         private LocalDate endDate;
+        @NotBlank(message = "理由は必須です")
         private String reason;
         
         // デフォルトコンストラクタ

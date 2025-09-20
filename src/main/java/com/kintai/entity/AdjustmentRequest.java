@@ -40,6 +40,23 @@ public class AdjustmentRequest {
     
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    // 承認監査
+    @Column(name = "approved_by_employee_id")
+    private Long approvedByEmployeeId;
+    
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+    
+    // 却下監査
+    @Column(name = "rejected_by_employee_id")
+    private Long rejectedByEmployeeId;
+    
+    @Column(name = "rejected_at")
+    private LocalDateTime rejectedAt;
+    
+    @Column(name = "rejection_comment", length = 500)
+    private String rejectionComment;
     
     // デフォルトコンストラクタ
     public AdjustmentRequest() {
@@ -140,6 +157,46 @@ public class AdjustmentRequest {
     
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+    
+    public Long getApprovedByEmployeeId() {
+        return approvedByEmployeeId;
+    }
+    
+    public void setApprovedByEmployeeId(Long approvedByEmployeeId) {
+        this.approvedByEmployeeId = approvedByEmployeeId;
+    }
+    
+    public LocalDateTime getApprovedAt() {
+        return approvedAt;
+    }
+    
+    public void setApprovedAt(LocalDateTime approvedAt) {
+        this.approvedAt = approvedAt;
+    }
+    
+    public Long getRejectedByEmployeeId() {
+        return rejectedByEmployeeId;
+    }
+    
+    public void setRejectedByEmployeeId(Long rejectedByEmployeeId) {
+        this.rejectedByEmployeeId = rejectedByEmployeeId;
+    }
+    
+    public LocalDateTime getRejectedAt() {
+        return rejectedAt;
+    }
+    
+    public void setRejectedAt(LocalDateTime rejectedAt) {
+        this.rejectedAt = rejectedAt;
+    }
+    
+    public String getRejectionComment() {
+        return rejectionComment;
+    }
+    
+    public void setRejectionComment(String rejectionComment) {
+        this.rejectionComment = rejectionComment;
     }
     
     /**

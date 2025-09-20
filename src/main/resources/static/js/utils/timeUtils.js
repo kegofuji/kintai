@@ -44,18 +44,32 @@ class TimeUtils {
         if (!clockInTime || !clockOutTime) {
             return '0:00';
         }
-        
         try {
             const clockIn = new Date(clockInTime);
             const clockOut = new Date(clockOutTime);
-            const diffMs = clockOut - clockIn;
-            
-            if (diffMs < 0) {
+            if (isNaN(clockIn.getTime()) || isNaN(clockOut.getTime())) {
                 return '0:00';
             }
-            
-            const diffMinutes = Math.floor(diffMs / (1000 * 60));
-            return this.formatMinutesToTime(diffMinutes);
+            if (clockOut <= clockIn) {
+                return '0:00';
+            }
+
+            // 総勤務分
+            let totalMinutes = Math.floor((clockOut - clockIn) / (1000 * 60));
+
+            // 昼休憩(12:00-13:00)にかかった分を控除
+            const lunchStart = new Date(clockIn);
+            lunchStart.setHours(12, 0, 0, 0);
+            const lunchEnd = new Date(clockIn);
+            lunchEnd.setHours(13, 0, 0, 0);
+
+            const overlapStart = new Date(Math.max(clockIn.getTime(), lunchStart.getTime()));
+            const overlapEnd = new Date(Math.min(clockOut.getTime(), lunchEnd.getTime()));
+            const overlapMinutes = Math.max(0, Math.floor((overlapEnd - overlapStart) / (1000 * 60)));
+            totalMinutes -= overlapMinutes;
+
+            if (totalMinutes < 0) totalMinutes = 0;
+            return this.formatMinutesToTime(totalMinutes);
         } catch (error) {
             console.error('Error calculating working time:', error);
             return '0:00';

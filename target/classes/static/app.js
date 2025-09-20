@@ -2,6 +2,7 @@
 let currentUser = null;
 let csrfToken = null;
 let currentEmployeeId = null;
+let isAdmin = false; // 管理者かどうかのフラグ
 
 // DOM要素の取得
 const loginContainer = document.getElementById('loginContainer');
@@ -30,12 +31,16 @@ const alertContainer = document.getElementById('alertContainer');
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
-    generateMonthOptions();
 });
 
 // アプリケーション初期化
 function initializeApp() {
     console.log('アプリケーションを初期化中...');
+    
+    // 画面クラスのインスタンスを作成（既存があれば再作成しない）
+    if (!window.historyScreen) {
+        window.historyScreen = new HistoryScreen();
+    }
     
     // セッション確認
     checkSession();
@@ -80,7 +85,8 @@ async function checkSession() {
             if (data.authenticated) {
                 currentUser = data.username;
                 currentEmployeeId = data.employeeId;
-                showMainInterface();
+                window.currentEmployeeId = data.employeeId; // HistoryScreenクラス用
+                await showMainInterface();
                 await loadCSRFToken();
                 await loadAttendanceHistory();
                 updateTodayAttendance();
@@ -118,8 +124,9 @@ async function handleLogin(e) {
         if (data.success) {
             currentUser = data.username;
             currentEmployeeId = data.employeeId;
+            window.currentEmployeeId = data.employeeId; // HistoryScreenクラス用
             showAlert('ログインに成功しました', 'success');
-            showMainInterface();
+            await showMainInterface();
             await loadCSRFToken();
             await loadAttendanceHistory();
             updateTodayAttendance();
@@ -323,13 +330,20 @@ function generateMockAttendanceData() {
         const clockOut = new Date(date);
         clockOut.setHours(18, Math.floor(Math.random() * 60), 0, 0);
         
-        const workingHours = Math.round((clockOut - clockIn) / (1000 * 60 * 60) * 10) / 10;
+        const diffMinutes = Math.floor((clockOut - clockIn) / (1000 * 60));
+        const workingHours = TimeUtils.formatMinutesToTime(diffMinutes);
+        
+        // 日本時間での日付文字列を生成
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
         
         data.push({
-            date: date.toISOString().split('T')[0],
-            clockIn: clockIn.toTimeString().substring(0, 5),
-            clockOut: clockOut.toTimeString().substring(0, 5),
-            workingHours: workingHours + 'h',
+            attendanceDate: dateStr,
+            clockInTime: clockIn.toISOString(),
+            clockOutTime: clockOut.toISOString(),
+            workingHours: workingHours,
             status: i === 0 ? '出勤中' : '退勤済み'
         });
     }
@@ -365,31 +379,24 @@ function displayAttendanceHistory(data) {
             new Date(record.clockOutTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '-';
         
         // 勤務時間計算
-        let workingHours = '-';
+        let workingHours = '0:00';
         if (record.clockInTime && record.clockOutTime) {
-            const clockIn = new Date(record.clockInTime);
-            const clockOut = new Date(record.clockOutTime);
-            const diffMs = clockOut - clockIn;
-            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-            const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            workingHours = `${diffHours}h ${diffMinutes}m`;
+            workingHours = TimeUtils.calculateWorkingTime(record.clockInTime, record.clockOutTime);
         }
         
-        // 遅刻・早退・残業時間表示
+        // 遅刻・早退・残業時間表示（0:00形式に統一）
         const lateMinutes = record.lateMinutes || 0;
         const earlyLeaveMinutes = record.earlyLeaveMinutes || 0;
         const overtimeMinutes = record.overtimeMinutes || 0;
+        const nightShiftMinutes = record.nightShiftMinutes || 0;
         
         // ステータス表示
         let statusText = '未出勤';
-        let statusClass = 'bg-secondary';
         
         if (record.clockInTime && !record.clockOutTime) {
             statusText = '出勤中';
-            statusClass = 'bg-warning';
         } else if (record.clockInTime && record.clockOutTime) {
             statusText = '退勤済み';
-            statusClass = 'bg-success';
         }
         
         row.innerHTML = `
@@ -397,16 +404,19 @@ function displayAttendanceHistory(data) {
             <td>${clockInTime}</td>
             <td>${clockOutTime}</td>
             <td>${workingHours}</td>
-            <td>${lateMinutes > 0 ? lateMinutes + '分' : '-'}</td>
-            <td>${earlyLeaveMinutes > 0 ? earlyLeaveMinutes + '分' : '-'}</td>
-            <td>${overtimeMinutes > 0 ? overtimeMinutes + '分' : '-'}</td>
-            <td><span class="badge ${statusClass}">${statusText}</span></td>
+            <td>${formatMinutesToTime(lateMinutes)}</td>
+            <td>${formatMinutesToTime(earlyLeaveMinutes)}</td>
+            <td>${formatMinutesToTime(overtimeMinutes)}</td>
+            <td>${formatMinutesToTime(nightShiftMinutes)}</td>
+            <td>${statusText}</td>
         `;
         tbody.appendChild(row);
     });
     
     // カレンダーを再生成
-    generateCalendar();
+    if (window.historyScreen) {
+        window.historyScreen.generateCalendar();
+    }
 }
 
 // 月末申請
@@ -440,7 +450,7 @@ async function handleMonthlySubmit() {
         const data = await response.json();
         
         if (data.success) {
-            showAlert(data.message, 'success');
+            showAlert('月末申請が完了しました', 'success');
         } else {
             showAlert(data.message || '月末申請に失敗しました', 'danger');
         }
@@ -573,25 +583,7 @@ async function downloadReport() {
     }
 }
 
-// 月選択オプション生成
-function generateMonthOptions() {
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth() + 1;
-    
-    for (let i = 0; i < 12; i++) {
-        const date = new Date(currentYear, currentMonth - 1 - i, 1);
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const value = `${year}-${month}`;
-        const label = `${year}年${month}月`;
-        
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = label;
-        monthSelect.appendChild(option);
-    }
-}
+// generateMonthOptions関数は削除されました - HistoryScreenクラスのgenerateMonthOptions()メソッドを使用
 
 // ログイン画面表示
 function showLoginInterface() {
@@ -600,7 +592,7 @@ function showLoginInterface() {
 }
 
 // メイン画面表示
-function showMainInterface() {
+async function showMainInterface() {
     console.log('メイン画面を表示中...');
     
     loginContainer.style.display = 'none';
@@ -608,29 +600,19 @@ function showMainInterface() {
     
     currentUserSpan.textContent = currentUser;
     
-    // 管理者権限チェック
-    if (currentUser === 'admin') {
-        // 管理者メニューアイテムを表示
-        if (adminVacationManagementNavItem) adminVacationManagementNavItem.style.display = 'block';
-        if (adminEmployeesNavItem) adminEmployeesNavItem.style.display = 'block';
-        if (adminAttendanceNavItem) adminAttendanceNavItem.style.display = 'block';
-        if (adminApprovalsNavItem) adminApprovalsNavItem.style.display = 'block';
-        if (adminReportsNavItem) adminReportsNavItem.style.display = 'block';
-    } else {
-        // 管理者メニューアイテムを非表示
-        if (adminVacationManagementNavItem) adminVacationManagementNavItem.style.display = 'none';
-        if (adminEmployeesNavItem) adminEmployeesNavItem.style.display = 'none';
-        if (adminAttendanceNavItem) adminAttendanceNavItem.style.display = 'none';
-        if (adminApprovalsNavItem) adminApprovalsNavItem.style.display = 'none';
-        if (adminReportsNavItem) adminReportsNavItem.style.display = 'none';
-    }
+    // 管理者権限チェック（セッション情報からroleを取得）
+    await checkAdminPermissions();
     
     // 時刻と日付を更新
     updateCurrentTime();
     updateCurrentDate();
     
-    // ダッシュボード画面を初期表示
-    showScreen('dashboardScreen');
+    // 役割に応じて初期表示画面を切り替え
+    if (isAdmin) {
+        showScreen('adminDashboardScreen');
+    } else {
+        showScreen('dashboardScreen');
+    }
     
     console.log('メイン画面表示完了');
 }
@@ -680,6 +662,7 @@ function setupNavigationListeners() {
     const adjustmentNavLink = document.getElementById('adjustmentNavLink');
     
     // 管理者メニュー
+    const adminMonthlySubmissionsNavLink = document.getElementById('adminMonthlySubmissionsNavLink');
     const adminVacationManagementNavLink = document.getElementById('adminVacationManagementNavLink');
     const adminEmployeesNavLink = document.getElementById('adminEmployeesNavLink');
     const adminAttendanceNavLink = document.getElementById('adminAttendanceNavLink');
@@ -699,8 +682,13 @@ function setupNavigationListeners() {
         brandNavLink.addEventListener('click', (e) => {
             e.preventDefault();
             console.log('ブランドリンクがクリックされました');
-            showScreen('dashboardScreen');
-            updateActiveNavLink(dashboardNavLink);
+            if (isAdmin) {
+                showScreen('adminDashboardScreen');
+                updateActiveNavLink(null);
+            } else {
+                showScreen('dashboardScreen');
+                updateActiveNavLink(dashboardNavLink);
+            }
         });
     }
     
@@ -719,6 +707,11 @@ function setupNavigationListeners() {
             console.log('勤怠履歴リンクがクリックされました');
             showScreen('historyScreen');
             updateActiveNavLink(historyNavLink);
+            
+            // HistoryScreenを初期化（既に初期化済みの場合はスキップ）
+            if (window.historyScreen && !window.historyScreen.initialized) {
+                window.historyScreen.init();
+            }
         });
     }
     
@@ -741,12 +734,30 @@ function setupNavigationListeners() {
     }
     
     // 管理者メニューのイベントリスナー
+    if (adminMonthlySubmissionsNavLink) {
+        adminMonthlySubmissionsNavLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('月末申請管理リンクがクリックされました');
+            showScreen('adminMonthlySubmissionsScreen');
+            updateActiveNavLink(adminMonthlySubmissionsNavLink);
+            
+            // AdminScreenの月末申請管理を初期化
+            if (window.adminScreen) {
+                window.adminScreen.initMonthlySubmissions();
+            }
+        });
+    }
+
     if (adminVacationManagementNavLink) {
         adminVacationManagementNavLink.addEventListener('click', (e) => {
             e.preventDefault();
             console.log('有給承認リンクがクリックされました');
             showScreen('adminVacationManagementScreen');
             updateActiveNavLink(adminVacationManagementNavLink);
+            // 管理者: 有給承認・付与調整 画面の初期化
+            if (window.adminScreen) {
+                window.adminScreen.initVacationManagement();
+            }
         });
     }
     
@@ -774,6 +785,10 @@ function setupNavigationListeners() {
             console.log('申請承認リンクがクリックされました');
             showScreen('adminApprovalsScreen');
             updateActiveNavLink(adminApprovalsNavLink);
+            // 管理者: 申請承認 画面の初期化
+            if (window.adminScreen) {
+                window.adminScreen.initApprovals();
+            }
         });
     }
     
@@ -1016,8 +1031,23 @@ function showScreen(screenId) {
     
     // 画面固有の初期化処理
     if (screenId === 'historyScreen') {
-        generateCalendar();
-        setupCalendarNavigation();
+        // 勤怠履歴画面の初期化（重複防止）
+        if (window.historyScreen && !window.historyScreen.initialized) {
+            window.historyScreen.init();
+        } else if (!window.historyScreen) {
+            // フォールバック: 基本的な初期化のみ
+            setupHistoryMonthSelect();
+        }
+    } else if (screenId === 'vacationScreen') {
+        // 有給申請画面の初期化
+        if (window.vacationScreen) {
+            window.vacationScreen.init();
+        }
+    } else if (screenId === 'adjustmentScreen') {
+        // 打刻修正申請画面の初期化
+        if (window.adjustmentScreen) {
+            window.adjustmentScreen.init();
+        }
     }
 }
 
@@ -1059,117 +1089,231 @@ function updateCurrentDate() {
     }
 }
 
-// カレンダー生成（改善版）
-function generateCalendar() {
-    const now = new Date();
-    
-    // 現在選択されている月を取得（デフォルトは今月）
-    let currentMonth = window.currentCalendarMonth || now.getMonth();
-    let currentYear = window.currentCalendarYear || now.getFullYear();
-    
-    const calendarGrid = document.getElementById('calendarGrid');
-    if (!calendarGrid) return;
-    
-    // カレンダーヘッダー（月曜始まり）
-    const weekdays = ['月', '火', '水', '木', '金', '土', '日'];
-    const headerHtml = weekdays.map(day => 
-        `<div class="calendar-header">${day}</div>`
-    ).join('');
-    
-    // 月の最初の日と最後の日
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    
-    // 月曜始まりのカレンダー計算
-    const startDate = new Date(firstDay);
-    const dayOfWeek = firstDay.getDay(); // 0=日曜, 1=月曜, ...
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // 月曜始まりのオフセット
-    startDate.setDate(startDate.getDate() - mondayOffset);
-    
-    let calendarHtml = headerHtml;
-    
-    // 6週間分のカレンダーを生成
-    for (let week = 0; week < 6; week++) {
-        for (let day = 0; day < 7; day++) {
-            const currentDate = new Date(startDate);
-            currentDate.setDate(startDate.getDate() + (week * 7) + day);
-            
-            const isCurrentMonth = currentDate.getMonth() === currentMonth;
-            const isToday = currentDate.toDateString() === now.toDateString();
-            const dayOfWeek = currentDate.getDay();
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 日曜日または土曜日
-            
-            let dayClass = 'calendar-day';
-            if (!isCurrentMonth) dayClass += ' other-month';
-            if (isToday) dayClass += ' today';
-            if (isWeekend) dayClass += ' weekend';
-            
-            // 実際の勤怠データを取得
-            const attendanceRecord = getAttendanceForDate(currentDate);
-            let attendanceInfo = '';
-            
-            if (attendanceRecord && isCurrentMonth) {
-                dayClass += ' has-attendance';
-                if (attendanceRecord.clockOutTime) {
-                    dayClass += ' clocked-out';
-                } else if (attendanceRecord.clockInTime) {
-                    dayClass += ' clocked-in';
-                }
-                
-                const clockInTime = attendanceRecord.clockInTime ? 
-                    new Date(attendanceRecord.clockInTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '';
-                const clockOutTime = attendanceRecord.clockOutTime ? 
-                    new Date(attendanceRecord.clockOutTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '';
-                
-                attendanceInfo = `
-                    <div class="attendance-info">
-                        ${clockInTime ? `<div class="clock-in-time">出勤: ${clockInTime}</div>` : ''}
-                        ${clockOutTime ? `<div class="clock-out-time">退勤: ${clockOutTime}</div>` : ''}
-                    </div>
-                `;
-            }
-            
-            calendarHtml += `
-                <div class="${dayClass}">
-                    <div class="day-number">${currentDate.getDate()}</div>
-                    ${attendanceInfo}
-                </div>
-            `;
-        }
-    }
-    
-    calendarGrid.innerHTML = calendarHtml;
-    
-    // 現在月表示を更新
-    const monthDisplay = document.getElementById('currentMonthDisplay');
-    if (monthDisplay) {
-        monthDisplay.textContent = `${currentYear}年${currentMonth + 1}月`;
-    }
-}
+// generateCalendar関数は削除されました - HistoryScreenクラスのgenerateCalendar()メソッドを使用
 
 // 指定日の勤怠データを取得
 function getAttendanceForDate(date) {
     if (!window.attendanceData) return null;
     
-    const dateStr = date.toISOString().split('T')[0];
+    // 日本時間での日付文字列を生成（UTC変換を避ける）
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
     return window.attendanceData.find(record => record.attendanceDate === dateStr);
+}
+
+// 指定日の申請ステータスを取得
+function getRequestStatusForDate(date) {
+    if (!window.requestData) return null;
+    
+    // 日本時間での日付文字列を生成
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    const request = window.requestData.find(req => req.requestDate === dateStr);
+    if (!request) return null;
+    
+    return {
+        text: request.status === 'APPROVED' ? '承認済' : '申請中',
+        class: request.status === 'APPROVED' ? 'bg-success' : 'bg-warning'
+    };
+}
+
+// カレンダーの日付クリックイベント設定
+function setupCalendarClickEvents() {
+    const calendarGrid = document.getElementById('calendarGrid');
+    if (!calendarGrid) return;
+    
+    const calendarDays = calendarGrid.querySelectorAll('.calendar-day');
+    calendarDays.forEach(day => {
+        day.addEventListener('click', () => {
+            const dateString = day.getAttribute('data-date');
+            console.log('カレンダーの日付がクリックされました:', dateString);
+            
+            // 選択状態の視覚的フィードバック
+            updateSelectedDate(day);
+            
+            // 勤怠詳細テーブルを選択日付でフィルタリング
+            filterAttendanceTableByDate(dateString);
+        });
+    });
+}
+
+// 選択日付の視覚的フィードバック更新
+function updateSelectedDate(selectedDay) {
+    const calendarGrid = document.getElementById('calendarGrid');
+    if (!calendarGrid) return;
+    
+    // 既存の選択状態をクリア
+    const calendarDays = calendarGrid.querySelectorAll('.calendar-day');
+    calendarDays.forEach(day => {
+        day.classList.remove('selected');
+    });
+    
+    // 選択された日付にクラスを追加
+    selectedDay.classList.add('selected');
+}
+
+// 勤怠詳細テーブルを指定日付でフィルタリング
+function filterAttendanceTableByDate(dateString) {
+    const historyTableBody = document.getElementById('historyTableBody');
+    if (!historyTableBody) return;
+
+    // 選択された日付の勤怠データを取得
+    const attendance = getAttendanceForDate(new Date(dateString));
+    
+    // 日付の詳細情報を取得
+    const selectedDate = new Date(dateString);
+    const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6;
+    const isHoliday = isHolidayDate(selectedDate);
+    
+    // テーブルをクリア
+    historyTableBody.innerHTML = '';
+
+    if (attendance) {
+        // 勤怠データがある場合
+        const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.classList.add('attendance-row');
+
+        // 時刻表示
+        const clockInTime = attendance.clockInTime ? 
+            new Date(attendance.clockInTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '-';
+        const clockOutTime = attendance.clockOutTime ? 
+            new Date(attendance.clockOutTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '-';
+
+        // 勤務時間の計算（0:00形式に統一）
+        let workingTime = '0:00';
+        if (attendance.clockInTime && attendance.clockOutTime) {
+            try {
+                const clockIn = new Date(attendance.clockInTime);
+                const clockOut = new Date(attendance.clockOutTime);
+                const diffMs = clockOut - clockIn;
+                const totalMinutes = Math.floor(diffMs / (1000 * 60));
+                workingTime = TimeUtils.formatMinutesToTime(totalMinutes);
+            } catch (error) {
+                console.error('Error calculating working time:', error);
+                workingTime = '0:00';
+            }
+        }
+
+        // 遅刻・早退・残業・深夜の表示（0:00形式に統一）
+        const lateDisplay = attendance.lateMinutes > 0 ? TimeUtils.formatMinutesToTime(attendance.lateMinutes) : '0:00';
+        const earlyLeaveDisplay = attendance.earlyLeaveMinutes > 0 ? TimeUtils.formatMinutesToTime(attendance.earlyLeaveMinutes) : '0:00';
+        const overtimeDisplay = attendance.overtimeMinutes > 0 ? TimeUtils.formatMinutesToTime(attendance.overtimeMinutes) : '0:00';
+        const nightWorkDisplay = attendance.nightWorkMinutes > 0 ? TimeUtils.formatMinutesToTime(attendance.nightWorkMinutes) : '0:00';
+
+        // ステータス表示
+        let status = '未出勤';
+        if (attendance.clockInTime && !attendance.clockOutTime) {
+            status = '出勤中';
+        } else if (attendance.clockInTime && attendance.clockOutTime) {
+            status = '退勤済み';
+        }
+
+        row.innerHTML = `
+            <td>${attendance.attendanceDate}</td>
+            <td>${clockInTime}</td>
+            <td>${clockOutTime}</td>
+            <td>${workingTime}</td>
+            <td>${lateDisplay}</td>
+            <td>${earlyLeaveDisplay}</td>
+            <td>${overtimeDisplay}</td>
+            <td>${nightWorkDisplay}</td>
+            <td>${status}</td>
+        `;
+
+        historyTableBody.appendChild(row);
+    } else {
+        // 勤怠データがない場合
+        const row = document.createElement('tr');
+        
+        // ステータスを日付の種類に応じて設定
+        let status = '打刻なし';
+        if (isHoliday) {
+            status = '祝日';
+        } else if (isWeekend) {
+            status = '休日';
+        }
+
+        row.innerHTML = `
+            <td>${dateString}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>0:00</td>
+            <td>0:00</td>
+            <td>0:00</td>
+            <td>0:00</td>
+            <td>0:00</td>
+            <td>${status}</td>
+        `;
+        historyTableBody.appendChild(row);
+    }
+}
+
+// 祝日判定（簡易版）
+function isHolidayDate(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    
+    // 日本の祝日判定（簡易版）
+    const holidays = [
+        `${year}-01-01`, // 元日
+        `${year}-02-11`, // 建国記念の日
+        `${year}-04-29`, // 昭和の日
+        `${year}-05-03`, // 憲法記念日
+        `${year}-05-04`, // みどりの日
+        `${year}-05-05`, // こどもの日
+        `${year}-08-11`, // 山の日
+        `${year}-11-03`, // 文化の日
+        `${year}-11-23`, // 勤労感謝の日
+        `${year}-12-23`  // 天皇誕生日
+    ];
+    
+    const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return holidays.includes(dateString);
 }
 
 // カレンダーナビゲーション設定
 function setupCalendarNavigation() {
+    console.log('setupCalendarNavigation関数が呼び出されました');
     const prevMonthBtn = document.getElementById('prevMonthBtn');
+    const currentMonthBtn = document.getElementById('currentMonthBtn');
     const nextMonthBtn = document.getElementById('nextMonthBtn');
+    
+    console.log('ボタン要素の取得状況:', {
+        prevMonthBtn: !!prevMonthBtn,
+        currentMonthBtn: !!currentMonthBtn,
+        nextMonthBtn: !!nextMonthBtn
+    });
     
     if (prevMonthBtn) {
         prevMonthBtn.addEventListener('click', () => {
+            console.log('前月ボタンがクリックされました');
             changeCalendarMonth(-1);
         });
+        console.log('前月ボタンにイベントリスナーを設定しました');
+    }
+    
+    if (currentMonthBtn) {
+        currentMonthBtn.addEventListener('click', () => {
+            console.log('今月ボタンがクリックされました');
+            goToCurrentMonth();
+        });
+        console.log('今月ボタンにイベントリスナーを設定しました');
     }
     
     if (nextMonthBtn) {
         nextMonthBtn.addEventListener('click', () => {
+            console.log('次月ボタンがクリックされました');
             changeCalendarMonth(1);
         });
+        console.log('次月ボタンにイベントリスナーを設定しました');
     }
 }
 
@@ -1193,10 +1337,30 @@ function changeCalendarMonth(direction) {
     window.currentCalendarYear = currentYear;
     
     // カレンダーを再生成
-    generateCalendar();
+    if (window.historyScreen) {
+        window.historyScreen.generateCalendar();
+    }
     
     // 選択された月の勤怠データを再読み込み
     loadAttendanceHistoryForMonth(currentYear, currentMonth + 1);
+}
+
+// 今月に移動
+function goToCurrentMonth() {
+    console.log('goToCurrentMonth関数が呼び出されました');
+    const now = new Date();
+    window.currentCalendarMonth = now.getMonth();
+    window.currentCalendarYear = now.getFullYear();
+    
+    console.log('今月に移動:', now.getFullYear(), '年', now.getMonth() + 1, '月');
+    
+    // カレンダーを再生成
+    if (window.historyScreen) {
+        window.historyScreen.generateCalendar();
+    }
+    
+    // 今月の勤怠データを再読み込み
+    loadAttendanceHistoryForMonth(now.getFullYear(), now.getMonth() + 1);
 }
 
 // 指定月の勤怠データを読み込み
@@ -1212,7 +1376,9 @@ async function loadAttendanceHistoryForMonth(year, month) {
             const data = await response.json();
             if (data.success) {
                 window.attendanceData = data.data || [];
-                generateCalendar();
+                if (window.historyScreen) {
+                    window.historyScreen.generateCalendar();
+                }
             }
         }
     } catch (error) {
@@ -1253,9 +1419,9 @@ async function updateTodayAttendance() {
     // APIが失敗した場合は初期状態を表示
     if (clockInTime) clockInTime.textContent = '--:--';
     if (clockOutTime) clockOutTime.textContent = '--:--';
-    if (workingTime) workingTime.textContent = '0時間0分';
+    if (workingTime) workingTime.textContent = '0:00';
     if (clockStatus) {
-        clockStatus.innerHTML = '<span class="badge bg-secondary fs-6">未出勤</span>';
+        clockStatus.innerHTML = '未出勤';
     }
     updateButtonStates(null, clockInBtn, clockOutBtn);
 }
@@ -1281,34 +1447,91 @@ function updateAttendanceDisplay(record, clockInTime, clockOutTime, workingTime,
     // 勤務時間計算
     if (workingTime) {
         if (record.clockInTime && record.clockOutTime) {
-            const clockIn = new Date(record.clockInTime);
-            const clockOut = new Date(record.clockOutTime);
-            const diffMs = clockOut - clockIn;
-            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-            const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            workingTime.textContent = `${diffHours}時間${diffMinutes}分`;
+            workingTime.textContent = TimeUtils.calculateWorkingTime(record.clockInTime, record.clockOutTime);
         } else if (record.clockInTime && !record.clockOutTime) {
             // 出勤中の場合、現在時刻までの勤務時間を計算
-            const clockIn = new Date(record.clockInTime);
-            const now = new Date();
-            const diffMs = now - clockIn;
-            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-            const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            workingTime.textContent = `${diffHours}時間${diffMinutes}分`;
+            workingTime.textContent = TimeUtils.calculateElapsedTime(record.clockInTime);
         } else {
-            workingTime.textContent = '0時間0分';
+            workingTime.textContent = '0:00';
         }
     }
     
     // ステータス表示
     if (clockStatus) {
         if (!record.clockInTime) {
-            clockStatus.innerHTML = '<span class="badge bg-secondary fs-6">未出勤</span>';
+            clockStatus.innerHTML = '未出勤';
         } else if (record.clockInTime && !record.clockOutTime) {
-            clockStatus.innerHTML = '<span class="badge bg-warning fs-6">出勤中</span>';
+            clockStatus.innerHTML = '出勤中';
         } else {
-            clockStatus.innerHTML = '<span class="badge bg-success fs-6">退勤済み</span>';
+            clockStatus.innerHTML = '退勤済み';
         }
+    }
+}
+
+// formatMinutesToTime関数はtimeUtils.jsに移動しました
+
+// 管理者権限チェック
+async function checkAdminPermissions() {
+    try {
+        const response = await fetch('/api/auth/session', {
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.authenticated && data.role === 'ADMIN') {
+                isAdmin = true;
+                // 管理者: 一般メニューを非表示
+                const dashboardNavLink = document.getElementById('dashboardNavLink');
+                const historyNavLink = document.getElementById('historyNavLink');
+                const vacationNavLink = document.getElementById('vacationNavLink');
+                const adjustmentNavLink = document.getElementById('adjustmentNavLink');
+                dashboardNavLink?.parentElement && (dashboardNavLink.parentElement.style.display = 'none');
+                historyNavLink?.parentElement && (historyNavLink.parentElement.style.display = 'none');
+                vacationNavLink?.parentElement && (vacationNavLink.parentElement.style.display = 'none');
+                adjustmentNavLink?.parentElement && (adjustmentNavLink.parentElement.style.display = 'none');
+
+                // 管理者: 勤怠管理は非表示のまま、申請承認は常時表示
+                if (adminAttendanceNavItem) adminAttendanceNavItem.style.display = 'none';
+                if (adminApprovalsNavItem) adminApprovalsNavItem.style.display = 'block';
+
+                // 残りの管理メニューは表示（必要に応じて）
+                const adminMonthlySubmissionsNavItem = document.getElementById('adminMonthlySubmissionsNavItem');
+                if (adminMonthlySubmissionsNavItem) adminMonthlySubmissionsNavItem.style.display = 'block';
+                if (adminVacationManagementNavItem) adminVacationManagementNavItem.style.display = 'block';
+                if (adminEmployeesNavItem) adminEmployeesNavItem.style.display = 'block';
+                if (adminReportsNavItem) adminReportsNavItem.style.display = 'block';
+            } else {
+                isAdmin = false;
+                // 管理者メニューアイテムを非表示
+                const adminMonthlySubmissionsNavItem = document.getElementById('adminMonthlySubmissionsNavItem');
+                if (adminMonthlySubmissionsNavItem) adminMonthlySubmissionsNavItem.style.display = 'none';
+                if (adminVacationManagementNavItem) adminVacationManagementNavItem.style.display = 'none';
+                if (adminEmployeesNavItem) adminEmployeesNavItem.style.display = 'none';
+                if (adminAttendanceNavItem) adminAttendanceNavItem.style.display = 'none';
+                if (adminApprovalsNavItem) adminApprovalsNavItem.style.display = 'none';
+                if (adminReportsNavItem) adminReportsNavItem.style.display = 'none';
+                // 一般メニューは表示
+                const dashboardNavLink = document.getElementById('dashboardNavLink');
+                const historyNavLink = document.getElementById('historyNavLink');
+                const vacationNavLink = document.getElementById('vacationNavLink');
+                const adjustmentNavLink = document.getElementById('adjustmentNavLink');
+                dashboardNavLink?.parentElement && (dashboardNavLink.parentElement.style.display = 'block');
+                historyNavLink?.parentElement && (historyNavLink.parentElement.style.display = 'block');
+                vacationNavLink?.parentElement && (vacationNavLink.parentElement.style.display = 'block');
+                adjustmentNavLink?.parentElement && (adjustmentNavLink.parentElement.style.display = 'block');
+            }
+        }
+    } catch (error) {
+        console.error('管理者権限チェックエラー:', error);
+        // エラーの場合は管理者メニューを非表示
+        const adminMonthlySubmissionsNavItem = document.getElementById('adminMonthlySubmissionsNavItem');
+        if (adminMonthlySubmissionsNavItem) adminMonthlySubmissionsNavItem.style.display = 'none';
+        if (adminVacationManagementNavItem) adminVacationManagementNavItem.style.display = 'none';
+        if (adminEmployeesNavItem) adminEmployeesNavItem.style.display = 'none';
+        if (adminAttendanceNavItem) adminAttendanceNavItem.style.display = 'none';
+        if (adminApprovalsNavItem) adminApprovalsNavItem.style.display = 'none';
+        if (adminReportsNavItem) adminReportsNavItem.style.display = 'none';
     }
 }
 
@@ -1340,5 +1563,73 @@ function updateButtonStates(record, clockInBtn, clockOutBtn) {
         clockOutBtn.disabled = false;
         clockOutBtn.classList.remove('btn-secondary');
         clockOutBtn.classList.add('btn-danger');
+    }
+}
+
+// 勤怠履歴画面の月選択設定
+function setupHistoryMonthSelect() {
+    const historyMonthSelect = document.getElementById('historyMonthSelect');
+    const searchHistoryBtn = document.getElementById('searchHistoryBtn');
+    
+    if (historyMonthSelect) {
+        // 月選択オプションを生成
+        generateHistoryMonthOptions();
+        
+        // 月選択イベントリスナー
+        historyMonthSelect.addEventListener('change', function() {
+            const selectedValue = this.value;
+            if (selectedValue) {
+                const [year, month] = selectedValue.split('-');
+                window.currentCalendarYear = parseInt(year);
+                window.currentCalendarMonth = parseInt(month) - 1;
+                if (window.historyScreen) {
+                    window.historyScreen.generateCalendar();
+                }
+            }
+        });
+    }
+    
+    if (searchHistoryBtn) {
+        searchHistoryBtn.addEventListener('click', function() {
+            const selectedValue = historyMonthSelect.value;
+            if (selectedValue) {
+                const [year, month] = selectedValue.split('-');
+                window.currentCalendarYear = parseInt(year);
+                window.currentCalendarMonth = parseInt(month) - 1;
+                if (window.historyScreen) {
+                    window.historyScreen.generateCalendar();
+                }
+            } else {
+                showAlert('月を選択してください', 'warning');
+            }
+        });
+    }
+}
+
+// 勤怠履歴用月選択オプション生成
+function generateHistoryMonthOptions() {
+    const historyMonthSelect = document.getElementById('historyMonthSelect');
+    if (!historyMonthSelect) return;
+
+    // 既存のオプションをクリア（最初のオプション以外）
+    while (historyMonthSelect.children.length > 1) {
+        historyMonthSelect.removeChild(historyMonthSelect.lastChild);
+    }
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+
+    // 現在年から過去3年分の1-12月を生成
+    for (let year = currentYear; year >= currentYear - 2; year--) {
+        for (let month = 12; month >= 1; month--) {
+            const monthStr = String(month).padStart(2, '0');
+            const value = `${year}-${monthStr}`;
+            const label = `${year}年${monthStr}月`;
+
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            historyMonthSelect.appendChild(option);
+        }
     }
 }

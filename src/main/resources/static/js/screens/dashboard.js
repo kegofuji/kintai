@@ -38,7 +38,7 @@ class DashboardScreen {
         // 現在時刻を1秒ごとに更新
         setInterval(() => {
             this.updateDateTime();
-            this.updateWorkingTime();
+            // 勤務時間のリアルタイム更新は行わない
         }, 1000);
     }
 
@@ -193,30 +193,7 @@ class DashboardScreen {
     /**
      * 勤務時間のリアルタイム更新
      */
-    updateWorkingTime() {
-        const workingTimeElement = document.getElementById('workingTime');
-        if (!workingTimeElement) return;
-
-        // 出勤済みだが退勤していない場合のみ更新
-        const clockInTimeElement = document.getElementById('clockInTime');
-        const clockOutTimeElement = document.getElementById('clockOutTime');
-        
-        if (clockInTimeElement && clockOutTimeElement && 
-            clockInTimeElement.textContent !== '--:--' && 
-            clockOutTimeElement.textContent === '--:--') {
-            
-            // 出勤時刻を取得（表示されている時刻から）
-            const clockInTimeText = clockInTimeElement.textContent;
-            const [hours, minutes] = clockInTimeText.split(':').map(Number);
-            const clockIn = new Date();
-            clockIn.setHours(hours, minutes, 0, 0);
-            
-            const now = new Date();
-            const diffMs = now - clockIn;
-            const diffMinutes = Math.floor(diffMs / (1000 * 60));
-            workingTimeElement.textContent = TimeUtils.formatMinutesToTime(diffMinutes);
-        }
-    }
+    updateWorkingTime() {}
 
     /**
      * 今日の勤怠状況読み込み
@@ -289,12 +266,9 @@ class DashboardScreen {
             return;
         }
 
-        // ステータス表示
-        let statusText = '未出勤';
-
-        if (data && data.clockInTime && !data.clockOutTime) {
-            statusText = '出勤中';
-        } else if (data && data.clockInTime && data.clockOutTime) {
+        // ステータス表示（未確定は空白）
+        let statusText = '';
+        if (data && data.clockInTime && data.clockOutTime) {
             statusText = '退勤済み';
         }
 
@@ -304,7 +278,7 @@ class DashboardScreen {
         // 出勤時刻表示
         const clockInTimeElement = document.getElementById('clockInTime');
         if (clockInTimeElement) {
-            if (data && data.clockInTime) {
+            if (data && data.clockInTime && data.clockOutTime) {
                 console.log('Clock in time raw data:', data.clockInTime);
                 try {
                     // LocalDateTimeの文字列をDateオブジェクトに変換
@@ -313,11 +287,11 @@ class DashboardScreen {
                     console.log('Clock in time set to:', clockInTime);
                 } catch (error) {
                     console.error('Error parsing clock in time:', error);
-                    clockInTimeElement.textContent = '--:--';
+                    clockInTimeElement.textContent = '';
                 }
             } else {
-                clockInTimeElement.textContent = '--:--';
-                console.log('No clock in time, set to --:--');
+                clockInTimeElement.textContent = '';
+                console.log('No confirmed times, set to blank');
             }
         } else {
             console.log('clockInTimeElement not found');
@@ -326,7 +300,7 @@ class DashboardScreen {
         // 退勤時刻表示
         const clockOutTimeElement = document.getElementById('clockOutTime');
         if (clockOutTimeElement) {
-            if (data && data.clockOutTime) {
+            if (data && data.clockInTime && data.clockOutTime) {
                 console.log('Clock out time raw data:', data.clockOutTime);
                 try {
                     // LocalDateTimeの文字列をDateオブジェクトに変換
@@ -335,11 +309,11 @@ class DashboardScreen {
                     console.log('Clock out time set to:', clockOutTime);
                 } catch (error) {
                     console.error('Error parsing clock out time:', error);
-                    clockOutTimeElement.textContent = '--:--';
+                    clockOutTimeElement.textContent = '';
                 }
             } else {
-                clockOutTimeElement.textContent = '--:--';
-                console.log('No clock out time, set to --:--');
+                clockOutTimeElement.textContent = '';
+                console.log('No confirmed times, set to blank');
             }
         } else {
             console.log('clockOutTimeElement not found');
@@ -351,13 +325,9 @@ class DashboardScreen {
             if (data && data.clockInTime && data.clockOutTime) {
                 workingTimeElement.textContent = TimeUtils.calculateWorkingTime(data.clockInTime, data.clockOutTime);
                 console.log('Working time set to:', TimeUtils.calculateWorkingTime(data.clockInTime, data.clockOutTime));
-            } else if (data && data.clockInTime) {
-                // 出勤済みだが退勤していない場合
-                workingTimeElement.textContent = TimeUtils.calculateElapsedTime(data.clockInTime);
-                console.log('Working time (in progress) set to:', TimeUtils.calculateElapsedTime(data.clockInTime));
             } else {
-                workingTimeElement.textContent = '0:00';
-                console.log('No working time, set to 0:00');
+                workingTimeElement.textContent = '';
+                console.log('No confirmed times, set to blank');
             }
         } else {
             console.log('workingTimeElement not found');
@@ -539,6 +509,23 @@ class DashboardScreen {
             );
 
             this.showAlert(data.message, 'success');
+
+            // 履歴カレンダーを即時反映（存在する場合）
+            try {
+                if (window.historyScreen && typeof window.historyScreen.loadCalendarData === 'function') {
+                    await window.historyScreen.loadCalendarData();
+                    if (typeof window.historyScreen.generateCalendar === 'function') {
+                        window.historyScreen.generateCalendar();
+                    }
+                }
+                // 旧カレンダー画面にも反映（存在する場合）
+                if (window.calendarScreen && typeof window.calendarScreen.loadCalendarData === 'function') {
+                    await window.calendarScreen.loadCalendarData();
+                    if (typeof window.calendarScreen.generateCalendar === 'function') {
+                        window.calendarScreen.generateCalendar();
+                    }
+                }
+            } catch (_) { /* no-op */ }
         } catch (error) {
             this.showAlert(error.message, 'danger');
         }

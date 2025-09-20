@@ -72,6 +72,7 @@ class FetchWithAuth {
         // CSRFトークンをヘッダーに追加（POST, PUT, DELETEリクエストの場合）
         if (this.csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method?.toUpperCase())) {
             defaultOptions.headers['X-CSRF-TOKEN'] = this.csrfToken;
+            defaultOptions.headers['X-XSRF-TOKEN'] = this.csrfToken; // Spring Security互換
         }
 
         // オプションをマージ

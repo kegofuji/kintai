@@ -125,6 +125,95 @@ public class AdminController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
+    /**
+     * ステータス別 有給申請一覧取得API
+     * @param status 取得対象ステータス（PENDING/APPROVED/REJECTED）
+     * @return 有給申請一覧
+     */
+    @GetMapping("/vacation/status/{status}")
+    public ResponseEntity<Map<String, Object>> getVacationsByStatus(@PathVariable String status) {
+        try {
+            com.kintai.entity.VacationStatus vs;
+            try {
+                vs = com.kintai.entity.VacationStatus.valueOf(status.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "無効なステータスです: " + status);
+                return ResponseEntity.badRequest().body(error);
+            }
+
+            List<VacationRequest> list = adminService.getVacationsByStatus(vs);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", list);
+            response.put("count", list.size());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "有給申請一覧の取得に失敗しました: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+    
+    /**
+     * 月末申請一覧取得API（管理者用）
+     * @param status 申請状態（SUBMITTED, APPROVED, REJECTED）
+     * @return 月末申請一覧
+     */
+    @GetMapping("/monthly-submissions")
+    public ResponseEntity<Map<String, Object>> getMonthlySubmissions(@RequestParam(required = false) String status) {
+        try {
+            List<Map<String, Object>> submissions = adminService.getMonthlySubmissions(status);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "月末申請一覧を取得しました");
+            response.put("data", submissions);
+            response.put("count", submissions.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "月末申請一覧の取得に失敗しました: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    /**
+     * 月末申請承認/却下API（管理者用）
+     * @param request 承認/却下リクエスト
+     * @return 処理結果
+     */
+    @PostMapping("/monthly-submissions/approve")
+    public ResponseEntity<Map<String, Object>> approveMonthlySubmission(@RequestBody MonthlySubmissionApprovalRequest request) {
+        try {
+            boolean success = adminService.approveMonthlySubmission(
+                request.getEmployeeId(), 
+                request.getYearMonth(), 
+                request.isApproved()
+            );
+            
+            Map<String, Object> response = new HashMap<>();
+            if (success) {
+                response.put("success", true);
+                response.put("message", request.isApproved() ? "月末申請を承認しました" : "月末申請を却下しました");
+            } else {
+                response.put("success", false);
+                response.put("message", "月末申請の処理に失敗しました");
+            }
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "月末申請処理中にエラーが発生しました: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
     
     /**
      * CSRFトークン取得API
@@ -158,6 +247,39 @@ public class AdminController {
         
         public void setYearMonth(String yearMonth) {
             this.yearMonth = yearMonth;
+        }
+    }
+    
+    /**
+     * 月末申請承認リクエスト内部クラス
+     */
+    public static class MonthlySubmissionApprovalRequest {
+        private Long employeeId;
+        private String yearMonth;
+        private boolean approved;
+        
+        public Long getEmployeeId() {
+            return employeeId;
+        }
+        
+        public void setEmployeeId(Long employeeId) {
+            this.employeeId = employeeId;
+        }
+        
+        public String getYearMonth() {
+            return yearMonth;
+        }
+        
+        public void setYearMonth(String yearMonth) {
+            this.yearMonth = yearMonth;
+        }
+        
+        public boolean isApproved() {
+            return approved;
+        }
+        
+        public void setApproved(boolean approved) {
+            this.approved = approved;
         }
     }
     
