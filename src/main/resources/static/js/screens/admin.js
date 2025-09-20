@@ -75,6 +75,7 @@ class AdminScreen {
      */
     initializeEmployeeElements() {
         this.employeesTableBody = document.getElementById('employeesTableBody');
+        this.addEmployeeBtn = document.getElementById('addEmployeeBtn');
     }
 
     /**
@@ -114,7 +115,22 @@ class AdminScreen {
      * 社員管理イベントリスナー設定
      */
     setupEmployeeEventListeners() {
-        // 社員管理のイベントリスナーは必要に応じて追加
+        // 社員追加ボタン
+        const addEmployeeBtn = document.getElementById('addEmployeeBtn');
+        if (addEmployeeBtn) {
+            addEmployeeBtn.addEventListener('click', () => this.showAddEmployeeModal());
+        }
+
+        // 編集・退職処理ボタン（イベント委譲）
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('edit-employee-btn')) {
+                const employeeId = e.target.getAttribute('data-employee-id');
+                this.editEmployee(parseInt(employeeId));
+            } else if (e.target.classList.contains('deactivate-employee-btn')) {
+                const employeeId = e.target.getAttribute('data-employee-id');
+                this.deactivateEmployee(parseInt(employeeId));
+            }
+        });
     }
 
     /**
@@ -130,7 +146,18 @@ class AdminScreen {
      * 申請承認イベントリスナー設定
      */
     setupApprovalEventListeners() {
-        // 申請承認のイベントリスナーは必要に応じて追加
+        // 承認・却下ボタン（イベント委譲）
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('approve-btn')) {
+                const requestId = e.target.getAttribute('data-request-id');
+                const requestType = e.target.getAttribute('data-type');
+                this.approveRequest(parseInt(requestId), requestType);
+            } else if (e.target.classList.contains('reject-btn')) {
+                const requestId = e.target.getAttribute('data-request-id');
+                const requestType = e.target.getAttribute('data-type');
+                this.rejectRequest(parseInt(requestId), requestType);
+            }
+        });
     }
 
     /**
@@ -226,17 +253,22 @@ class AdminScreen {
 
         employees.forEach(employee => {
             const row = document.createElement('tr');
+            const statusClass = employee.isActive ? 'bg-success' : 'bg-secondary';
+            const statusText = employee.isActive ? '在籍' : '退職';
+            const deactivateText = employee.isActive ? '退職処理' : '復職処理';
+            const deactivateClass = employee.isActive ? 'btn-outline-danger' : 'btn-outline-success';
+            
             row.innerHTML = `
                 <td>${employee.employeeCode}</td>
                 <td>${employee.lastName} ${employee.firstName}</td>
                 <td>${employee.email}</td>
-                <td><span class="badge ${employee.isActive ? 'bg-success' : 'bg-secondary'}">${employee.isActive ? '在職' : '退職'}</span></td>
+                <td><span class="badge ${statusClass}">${statusText}</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary me-1" onclick="adminScreen.editEmployee(${employee.employeeId})">
+                    <button class="btn btn-sm btn-outline-primary me-1 edit-employee-btn" data-employee-id="${employee.employeeId}">
                         <i class="fas fa-edit"></i> 編集
                     </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="adminScreen.deactivateEmployee(${employee.employeeId})">
-                        <i class="fas fa-user-times"></i> 退職処理
+                    <button class="btn btn-sm ${deactivateClass} deactivate-employee-btn" data-employee-id="${employee.employeeId}">
+                        <i class="fas fa-user-times"></i> ${deactivateText}
                     </button>
                 </td>
             `;
@@ -340,15 +372,21 @@ class AdminScreen {
             const clockOutTime = record.clockOutTime ? 
                 new Date(record.clockOutTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '-';
 
+            // 遅刻・早退・残業・深夜の表示（0:00形式に統一）
+            const lateDisplay = record.lateMinutes > 0 ? formatMinutesToTime(record.lateMinutes) : '0:00';
+            const earlyLeaveDisplay = record.earlyLeaveMinutes > 0 ? formatMinutesToTime(record.earlyLeaveMinutes) : '0:00';
+            const overtimeDisplay = record.overtimeMinutes > 0 ? formatMinutesToTime(record.overtimeMinutes) : '0:00';
+            const nightWorkDisplay = record.nightWorkMinutes > 0 ? formatMinutesToTime(record.nightWorkMinutes) : '0:00';
+
             row.innerHTML = `
                 <td>${record.attendanceDate}</td>
                 <td>${clockInTime}</td>
                 <td>${clockOutTime}</td>
-                <td>${record.lateMinutes}分</td>
-                <td>${record.earlyLeaveMinutes}分</td>
-                <td>${record.overtimeMinutes}分</td>
-                <td>${record.nightWorkMinutes}分</td>
-                <td><span class="badge bg-success">${record.status}</span></td>
+                <td>${lateDisplay}</td>
+                <td>${earlyLeaveDisplay}</td>
+                <td>${overtimeDisplay}</td>
+                <td>${nightWorkDisplay}</td>
+                <td>${record.status}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-primary" onclick="adminScreen.editAttendance(${record.attendanceId})">
                         <i class="fas fa-edit"></i> 編集
@@ -430,7 +468,7 @@ class AdminScreen {
                 <td>${approval.type}</td>
                 <td>${approval.date}</td>
                 <td>${approval.reason}</td>
-                <td><span class="badge bg-warning">${approval.status}</span></td>
+                <td>${approval.status}</td>
                 <td>
                     <button class="btn btn-sm btn-success me-1" onclick="adminScreen.approveRequest(${approval.id})">
                         <i class="fas fa-check"></i> 承認
@@ -542,7 +580,7 @@ class AdminScreen {
                 <td>${item.type}</td>
                 <td>${item.date}</td>
                 <td>${item.reason}</td>
-                <td><span class="badge bg-warning">${item.status}</span></td>
+                <td>${item.status}</td>
                 <td>
                     <button class="btn btn-sm btn-success me-1" onclick="adminScreen.approveVacationRequest(${item.id})">
                         <i class="fas fa-check"></i> 承認
@@ -672,19 +710,19 @@ class AdminScreen {
 
         const currentDate = new Date();
         const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth() + 1;
 
-        for (let i = 0; i < 12; i++) {
-            const date = new Date(currentYear, currentMonth - 1 - i, 1);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const value = `${year}-${month}`;
-            const label = `${year}年${month}月`;
+        // 現在年から過去3年分の1-12月を生成
+        for (let year = currentYear; year >= currentYear - 2; year--) {
+            for (let month = 12; month >= 1; month--) {
+                const monthStr = String(month).padStart(2, '0');
+                const value = `${year}-${monthStr}`;
+                const label = `${year}年${monthStr}月`;
 
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = label;
-            this.attendanceMonthSelect.appendChild(option);
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                this.attendanceMonthSelect.appendChild(option);
+            }
         }
     }
 
@@ -696,19 +734,19 @@ class AdminScreen {
 
         const currentDate = new Date();
         const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth() + 1;
 
-        for (let i = 0; i < 12; i++) {
-            const date = new Date(currentYear, currentMonth - 1 - i, 1);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const value = `${year}-${month}`;
-            const label = `${year}年${month}月`;
+        // 現在年から過去3年分の1-12月を生成
+        for (let year = currentYear; year >= currentYear - 2; year--) {
+            for (let month = 12; month >= 1; month--) {
+                const monthStr = String(month).padStart(2, '0');
+                const value = `${year}-${monthStr}`;
+                const label = `${year}年${monthStr}月`;
 
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = label;
-            this.reportMonthSelect.appendChild(option);
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                this.reportMonthSelect.appendChild(option);
+            }
         }
     }
 
@@ -752,6 +790,298 @@ class AdminScreen {
                 alertDiv.parentNode.removeChild(alertDiv);
             }
         }, 5000);
+    }
+
+    /**
+     * 社員編集
+     * @param {number} employeeId - 従業員ID
+     */
+    editEmployee(employeeId) {
+        // 社員編集モーダルを表示
+        this.showEditEmployeeModal(employeeId);
+    }
+
+    /**
+     * 社員編集モーダル表示
+     * @param {number} employeeId - 従業員ID
+     */
+    showEditEmployeeModal(employeeId) {
+        // 簡易的な編集フォームを表示
+        const employee = this.getEmployeeById(employeeId);
+        if (!employee) {
+            this.showAlert('社員情報が見つかりません', 'danger');
+            return;
+        }
+
+        const newFirstName = prompt('名を入力してください:', employee.firstName);
+        if (newFirstName === null) return;
+
+        const newLastName = prompt('姓を入力してください:', employee.lastName);
+        if (newLastName === null) return;
+
+        const newEmail = prompt('メールアドレスを入力してください:', employee.email);
+        if (newEmail === null) return;
+
+        // 社員情報を更新
+        this.updateEmployee(employeeId, {
+            firstName: newFirstName,
+            lastName: newLastName,
+            email: newEmail
+        });
+    }
+
+    /**
+     * 社員情報更新
+     * @param {number} employeeId - 従業員ID
+     * @param {Object} updateData - 更新データ
+     */
+    async updateEmployee(employeeId, updateData) {
+        try {
+            const response = await fetch(`/api/admin/employees/${employeeId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': window.csrfToken
+                },
+                credentials: 'include',
+                body: JSON.stringify(updateData)
+            });
+
+            if (response.ok) {
+                this.showAlert('社員情報を更新しました', 'success');
+                this.loadEmployees();
+            } else {
+                const errorData = await response.json();
+                this.showAlert(errorData.message || '社員情報の更新に失敗しました', 'danger');
+            }
+        } catch (error) {
+            console.error('社員情報更新エラー:', error);
+            this.showAlert('社員情報の更新中にエラーが発生しました', 'danger');
+        }
+    }
+
+    /**
+     * 社員IDで社員情報を取得
+     * @param {number} employeeId - 従業員ID
+     * @returns {Object|null} - 社員情報
+     */
+    getEmployeeById(employeeId) {
+        // モックデータから検索
+        const mockData = this.generateMockEmployeeData();
+        return mockData.find(emp => emp.employeeId === employeeId);
+    }
+
+    /**
+     * 社員退職処理
+     * @param {number} employeeId - 従業員ID
+     */
+    deactivateEmployee(employeeId) {
+        const employee = this.getEmployeeById(employeeId);
+        if (!employee) {
+            this.showAlert('社員情報が見つかりません', 'danger');
+            return;
+        }
+
+        const action = employee.isActive ? '退職処理' : '復職処理';
+        const confirmMessage = `${employee.lastName} ${employee.firstName} を${action}しますか？`;
+        
+        if (confirm(confirmMessage)) {
+            this.toggleEmployeeStatus(employeeId, !employee.isActive);
+        }
+    }
+
+    /**
+     * 社員の在籍状態を切り替え
+     * @param {number} employeeId - 従業員ID
+     * @param {boolean} isActive - 在籍状態
+     */
+    async toggleEmployeeStatus(employeeId, isActive) {
+        try {
+            const response = await fetch(`/api/admin/employees/${employeeId}/status`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': window.csrfToken
+                },
+                credentials: 'include',
+                body: JSON.stringify({ isActive: isActive })
+            });
+
+            if (response.ok) {
+                const action = isActive ? '復職処理' : '退職処理';
+                this.showAlert(`${action}が完了しました`, 'success');
+                this.loadEmployees();
+            } else {
+                const errorData = await response.json();
+                this.showAlert(errorData.message || '処理に失敗しました', 'danger');
+            }
+        } catch (error) {
+            console.error('社員状態変更エラー:', error);
+            this.showAlert('処理中にエラーが発生しました', 'danger');
+        }
+    }
+
+    /**
+     * 社員追加モーダル表示
+     */
+    showAddEmployeeModal() {
+        // 簡易的な追加フォームを表示
+        const employeeCode = prompt('社員コードを入力してください:');
+        if (employeeCode === null) return;
+
+        const firstName = prompt('名を入力してください:');
+        if (firstName === null) return;
+
+        const lastName = prompt('姓を入力してください:');
+        if (lastName === null) return;
+
+        const email = prompt('メールアドレスを入力してください:');
+        if (email === null) return;
+
+        const hireDate = prompt('入社日を入力してください (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
+        if (hireDate === null) return;
+
+        // 社員を追加
+        this.addEmployee({
+            employeeCode: employeeCode,
+            firstName: firstName,
+            lastName: lastName,
+            email: email,
+            hireDate: hireDate
+        });
+    }
+
+    /**
+     * 社員追加
+     * @param {Object} employeeData - 社員データ
+     */
+    async addEmployee(employeeData) {
+        try {
+            const response = await fetch('/api/admin/employees', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': window.csrfToken
+                },
+                credentials: 'include',
+                body: JSON.stringify(employeeData)
+            });
+
+            if (response.ok) {
+                this.showAlert('社員を追加しました', 'success');
+                this.loadEmployees();
+            } else {
+                const errorData = await response.json();
+                this.showAlert(errorData.message || '社員の追加に失敗しました', 'danger');
+            }
+        } catch (error) {
+            console.error('社員追加エラー:', error);
+            this.showAlert('社員の追加中にエラーが発生しました', 'danger');
+        }
+    }
+
+    /**
+     * 申請承認
+     * @param {number} requestId - 申請ID
+     * @param {string} requestType - 申請種別
+     */
+    async approveRequest(requestId, requestType) {
+        try {
+            let apiEndpoint = '';
+            let requestData = {};
+
+            switch (requestType) {
+                case 'vacation':
+                    apiEndpoint = '/api/admin/vacation/approve';
+                    requestData = { vacationId: requestId, approved: true };
+                    break;
+                case 'adjustment':
+                    apiEndpoint = '/api/admin/adjustment/approve';
+                    requestData = { adjustmentId: requestId, approved: true };
+                    break;
+                case 'monthly':
+                    apiEndpoint = '/api/admin/monthly/approve';
+                    requestData = { monthlyId: requestId, approved: true };
+                    break;
+                default:
+                    throw new Error('不明な申請種別です');
+            }
+
+            const data = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.post(apiEndpoint, requestData),
+                '申請の承認に失敗しました'
+            );
+
+            this.showAlert('申請を承認しました', 'success');
+            this.updateRequestStatus(requestId, '承認済');
+        } catch (error) {
+            this.showAlert(error.message, 'danger');
+        }
+    }
+
+    /**
+     * 申請却下
+     * @param {number} requestId - 申請ID
+     * @param {string} requestType - 申請種別
+     */
+    async rejectRequest(requestId, requestType) {
+        if (!confirm('この申請を却下しますか？')) {
+            return;
+        }
+
+        try {
+            let apiEndpoint = '';
+            let requestData = {};
+
+            switch (requestType) {
+                case 'vacation':
+                    apiEndpoint = '/api/admin/vacation/approve';
+                    requestData = { vacationId: requestId, approved: false };
+                    break;
+                case 'adjustment':
+                    apiEndpoint = '/api/admin/adjustment/approve';
+                    requestData = { adjustmentId: requestId, approved: false };
+                    break;
+                case 'monthly':
+                    apiEndpoint = '/api/admin/monthly/approve';
+                    requestData = { monthlyId: requestId, approved: false };
+                    break;
+                default:
+                    throw new Error('不明な申請種別です');
+            }
+
+            const data = await fetchWithAuth.handleApiCall(
+                () => fetchWithAuth.post(apiEndpoint, requestData),
+                '申請の却下に失敗しました'
+            );
+
+            this.showAlert('申請を却下しました', 'warning');
+            this.updateRequestStatus(requestId, '却下');
+        } catch (error) {
+            this.showAlert(error.message, 'danger');
+        }
+    }
+
+    /**
+     * 申請ステータス更新
+     * @param {number} requestId - 申請ID
+     * @param {string} status - 新しいステータス
+     */
+    updateRequestStatus(requestId, status) {
+        const approveBtn = document.querySelector(`[data-request-id="${requestId}"].approve-btn`);
+        const rejectBtn = document.querySelector(`[data-request-id="${requestId}"].reject-btn`);
+        const statusBadge = approveBtn?.closest('tr')?.querySelector('.badge');
+
+        if (statusBadge) {
+            statusBadge.textContent = status;
+        }
+
+        if (approveBtn && rejectBtn) {
+            approveBtn.disabled = true;
+            rejectBtn.disabled = true;
+            approveBtn.textContent = '処理済';
+            rejectBtn.textContent = '処理済';
+        }
     }
 }
 

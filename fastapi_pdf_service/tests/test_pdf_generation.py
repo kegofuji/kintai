@@ -6,6 +6,10 @@ from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from main import app
 from services.pdf_generator import PDFGenerator
 from services.file_manager import FileManager
@@ -266,10 +270,10 @@ class TestPDFGenerator:
     
     def test_format_overtime(self, pdf_generator):
         """残業時間フォーマットテスト"""
-        assert pdf_generator._format_overtime(0) == ""
-        assert pdf_generator._format_overtime(60) == "1時間"
-        assert pdf_generator._format_overtime(90) == "1時間30分"
-        assert pdf_generator._format_overtime(30) == "30分"
+        assert pdf_generator._format_overtime(0) == "0:00"
+        assert pdf_generator._format_overtime(60) == "1:00"
+        assert pdf_generator._format_overtime(90) == "1:30"
+        assert pdf_generator._format_overtime(30) == "0:30"
     
     def test_get_status_display(self, pdf_generator):
         """ステータス表示テスト"""
@@ -299,7 +303,8 @@ class TestPDFGenerator:
         assert "total_work_hours" in summary
         assert "total_overtime_hours" in summary
         assert "total_night_hours" in summary
-        assert "vacation_days" in summary
+        assert "total_early_hours" in summary
+        assert "total_late_hours" in summary
 
 class TestFileManager:
     """FileManagerクラスのテスト"""

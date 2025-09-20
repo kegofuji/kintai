@@ -20,8 +20,8 @@ class Router {
      */
     defineRoutes() {
         // 一般ユーザー向けルート
-        this.routes.set('/', { screen: 'dashboardScreen', title: 'ダッシュボード' });
-        this.routes.set('/dashboard', { screen: 'dashboardScreen', title: 'ダッシュボード' });
+        this.routes.set('/', { screen: 'dashboardScreen', title: 'TOP' });
+        this.routes.set('/dashboard', { screen: 'dashboardScreen', title: 'TOP' });
         this.routes.set('/history', { screen: 'historyScreen', title: '勤怠履歴' });
         this.routes.set('/vacation', { screen: 'vacationScreen', title: '有給申請' });
         this.routes.set('/adjustment', { screen: 'adjustmentScreen', title: '打刻修正申請' });

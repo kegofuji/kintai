@@ -141,35 +141,72 @@ class PDFGenerator:
             story.append(Paragraph(employee_info, styles['Normal']))
             story.append(Spacer(1, 15*mm))
             
-            # 勤怠データテーブル
+            # カレンダー形式の勤怠データ表示
             if attendance_data:
-                table_data = self._create_table_data(attendance_data)
-                table = Table(table_data, colWidths=[25*mm, 20*mm, 20*mm, 25*mm, 20*mm, 20*mm, 20*mm])
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                calendar_data = self._create_calendar_data(attendance_data, year_month)
+                calendar_table = Table(calendar_data, colWidths=[25*mm] * 7)
+                calendar_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 10),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                    ('FONTSIZE', (0, 0), (-1, 0), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 7)
                 ]))
-                story.append(table)
+                story.append(calendar_table)
+                
+                # 詳細データテーブル
+                story.append(Spacer(1, 10*mm))
+                detail_data = self._create_detail_table_data(attendance_data)
+                detail_table = Table(detail_data, colWidths=[25*mm, 20*mm, 20*mm, 20*mm, 20*mm, 20*mm, 20*mm])
+                detail_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 7)
+                ]))
+                story.append(detail_table)
             else:
                 story.append(Paragraph("データなし", styles['Normal']))
             
-            # 集計情報
-            story.append(Spacer(1, 15*mm))
+            # 月間集計情報（下部に表示）
+            story.append(Spacer(1, 20*mm))
             summary_data = self._calculate_summary(attendance_data)
-            summary_text = f"""
-            <b>集計情報</b><br/>
-            実働合計: {summary_data['total_work_hours']}時間<br/>
-            残業合計: {summary_data['total_overtime_hours']}時間<br/>
-            深夜合計: {summary_data['total_night_hours']}時間<br/>
-            有給取得日数: {summary_data['vacation_days']}日
-            """
-            story.append(Paragraph(summary_text, styles['Normal']))
+            
+            # 集計テーブル
+            summary_table_data = [
+                ["項目", "時間"],
+                ["月間総労働時間", summary_data['total_work_hours']],
+                ["遅刻時間", summary_data['total_late_hours']],
+                ["早退時間", summary_data['total_early_hours']],
+                ["残業時間", summary_data['total_overtime_hours']],
+                ["深夜時間", summary_data['total_night_hours']]
+            ]
+            
+            summary_table = Table(summary_table_data, colWidths=[60*mm, 40*mm])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#e3f2fd')),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10)
+            ]))
+            story.append(summary_table)
             
             # フッター
             story.append(Spacer(1, 30*mm))
@@ -182,11 +219,59 @@ class PDFGenerator:
             logger.error(f"PDF作成エラー: {str(e)}")
             raise
     
-    def _create_table_data(self, attendance_data: List[Dict[str, Any]]) -> List[List[str]]:
-        """テーブルデータを作成"""
+    def _create_calendar_data(self, attendance_data: List[Dict[str, Any]], year_month: str) -> List[List[str]]:
+        """カレンダー形式のデータを作成"""
+        from datetime import datetime, timedelta
+        import calendar
+        
+        # 年月を解析
+        year, month = map(int, year_month.split('-'))
+        
+        # カレンダーヘッダー
+        weekdays = ['月', '火', '水', '木', '金', '土', '日']
+        calendar_data = [weekdays]
+        
+        # 月の最初の日と最後の日
+        first_day = datetime(year, month, 1)
+        last_day = datetime(year, month, calendar.monthrange(year, month)[1])
+        
+        # 月曜始まりのカレンダー計算
+        start_date = first_day - timedelta(days=first_day.weekday())
+        
+        # 6週間分のカレンダーを生成
+        for week in range(6):
+            week_data = []
+            for day in range(7):
+                current_date = start_date + timedelta(days=week * 7 + day)
+                day_number = current_date.day
+                
+                # 現在の月かどうか
+                is_current_month = current_date.month == month
+                
+                # 勤怠データを取得
+                attendance_record = self._get_attendance_for_date(attendance_data, current_date.strftime('%Y-%m-%d'))
+                
+                if is_current_month:
+                    if attendance_record:
+                        # 出勤・退勤時刻を表示
+                        clock_in = self._format_time(attendance_record.get('clockInTime', ''))
+                        clock_out = self._format_time(attendance_record.get('clockOutTime', ''))
+                        cell_content = f"{day_number}\n{clock_in}\n{clock_out}"
+                    else:
+                        cell_content = str(day_number)
+                else:
+                    cell_content = ""
+                
+                week_data.append(cell_content)
+            calendar_data.append(week_data)
+        
+        return calendar_data
+    
+    def _create_detail_table_data(self, attendance_data: List[Dict[str, Any]]) -> List[List[str]]:
+        """詳細テーブルデータを作成"""
         # ヘッダー
         table_data = [
-            ["日付", "出勤時刻", "退勤時刻", "勤怠区分", "残業時間", "遅刻分", "早退分"]
+            ["日付", "出勤", "退勤", "遅刻", "早退", "残業", "深夜"]
         ]
         
         # データ行
@@ -195,21 +280,29 @@ class PDFGenerator:
                 self._format_date(record.get('attendanceDate', '')),
                 self._format_time(record.get('clockInTime', '')),
                 self._format_time(record.get('clockOutTime', '')),
-                self._get_status_display(record.get('attendanceStatus', '')),
-                self._format_overtime(record.get('overtimeMinutes', 0)),
-                str(record.get('lateMinutes', 0)),
-                str(record.get('earlyLeaveMinutes', 0))
+                self._format_minutes(record.get('lateMinutes', 0)),
+                self._format_minutes(record.get('earlyLeaveMinutes', 0)),
+                self._format_minutes(record.get('overtimeMinutes', 0)),
+                self._format_minutes(record.get('nightShiftMinutes', 0))
             ]
             table_data.append(row)
         
         return table_data
+    
+    def _get_attendance_for_date(self, attendance_data: List[Dict[str, Any]], date_str: str) -> Optional[Dict[str, Any]]:
+        """指定日の勤怠データを取得"""
+        for record in attendance_data:
+            if record.get('attendanceDate') == date_str:
+                return record
+        return None
     
     def _calculate_summary(self, attendance_data: List[Dict[str, Any]]) -> Dict[str, str]:
         """集計情報を計算"""
         total_work_minutes = 0
         total_overtime_minutes = 0
         total_night_minutes = 0
-        vacation_days = 0
+        total_late_minutes = 0
+        total_early_minutes = 0
         
         for record in attendance_data:
             # 実働時間の計算（簡易版）
@@ -224,20 +317,27 @@ class PDFGenerator:
             if overtime:
                 total_overtime_minutes += overtime
             
-            # 深夜勤務（簡易判定）
-            status = record.get('attendanceStatus', '')
-            if 'NIGHT' in status.upper():
-                total_night_minutes += 480  # 8時間の仮定
+            # 深夜勤務時間
+            night_shift = record.get('nightShiftMinutes', 0)
+            if night_shift:
+                total_night_minutes += night_shift
             
-            # 有給取得日数
-            if 'VACATION' in status.upper():
-                vacation_days += 1
+            # 遅刻時間
+            late = record.get('lateMinutes', 0)
+            if late:
+                total_late_minutes += late
+            
+            # 早退時間
+            early = record.get('earlyLeaveMinutes', 0)
+            if early:
+                total_early_minutes += early
         
         return {
-            'total_work_hours': f"{total_work_minutes // 60}時間{total_work_minutes % 60}分",
-            'total_overtime_hours': f"{total_overtime_minutes // 60}時間{total_overtime_minutes % 60}分",
-            'total_night_hours': f"{total_night_minutes // 60}時間{total_night_minutes % 60}分",
-            'vacation_days': str(vacation_days)
+            'total_work_hours': f"{total_work_minutes // 60}:{(total_work_minutes % 60):02d}",
+            'total_overtime_hours': f"{total_overtime_minutes // 60}:{(total_overtime_minutes % 60):02d}",
+            'total_night_hours': f"{total_night_minutes // 60}:{(total_night_minutes % 60):02d}",
+            'total_late_hours': f"{total_late_minutes // 60}:{(total_late_minutes % 60):02d}",
+            'total_early_hours': f"{total_early_minutes // 60}:{(total_early_minutes % 60):02d}"
         }
     
     def _format_year_month(self, year_month: str) -> str:
@@ -271,17 +371,22 @@ class PDFGenerator:
     def _format_overtime(self, overtime_minutes: int) -> str:
         """残業時間をフォーマット"""
         if overtime_minutes == 0:
-            return ""
+            return "0:00"
         
         hours = overtime_minutes // 60
         minutes = overtime_minutes % 60
         
-        if hours > 0 and minutes > 0:
-            return f"{hours}時間{minutes}分"
-        elif hours > 0:
-            return f"{hours}時間"
-        else:
-            return f"{minutes}分"
+        return f"{hours}:{minutes:02d}"
+    
+    def _format_minutes(self, minutes: int) -> str:
+        """分をフォーマット（0:00形式に統一）"""
+        if minutes is None or minutes == 0:
+            return "0:00"
+        
+        hours = minutes // 60
+        mins = minutes % 60
+        
+        return f"{hours}:{mins:02d}"
     
     def _get_status_display(self, status: str) -> str:
         """ステータス表示名を取得"""

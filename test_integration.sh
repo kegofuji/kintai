@@ -35,7 +35,7 @@ curl -s -X POST ${BASE_URL}/api/attendance/clock-out \
 
 # 4. 勤怠履歴確認
 echo "[4] 勤怠履歴確認..."
-curl -s "${BASE_URL}/api/test/attendance/records?employeeId=6&yearMonth=2025-09" -b $COOKIE_JAR
+curl -s "${BASE_URL}/api/attendance/history/6?year=2025&month=9" -b $COOKIE_JAR
 
 # 5. 有給申請
 echo "[5] 有給申請..."
@@ -56,24 +56,31 @@ echo "[7] 管理者ログイン..."
 curl -s -X POST ${BASE_URL}/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"pass"}' \
-  -c $COOKIE_JAR
+  -c admin_cookies.txt
 
-# 8. 有給承認
-echo "[8] 管理者による有給承認..."
+# 8. 管理者月末申請承認
+echo "[8] 管理者月末申請承認..."
+curl -s -X POST ${BASE_URL}/api/attendance/monthly-approve \
+  -H "Content-Type: application/json" \
+  -b admin_cookies.txt \
+  -d '{"employeeId":6,"yearMonth":"2025-09"}'
+
+# 9. 有給承認
+echo "[9] 管理者による有給承認..."
 curl -s -X POST ${BASE_URL}/api/admin/vacation/approve \
   -H "Content-Type: application/json" \
   -b $COOKIE_JAR \
   -d '{"vacationId":1,"approved":true}'
 
-# 9. 月末承認
-echo "[9] 管理者による月末承認..."
+# 10. 月末承認
+echo "[10] 管理者による月末承認..."
 curl -s -X POST ${BASE_URL}/api/admin/attendance/approve \
   -H "Content-Type: application/json" \
   -b $COOKIE_JAR \
   -d '{"employeeId":6,"yearMonth":"2025-09"}'
 
-# 10. PDF生成（Spring Boot → FastAPI）
-echo "[10] PDF生成..."
+# 11. PDF生成（Spring Boot → FastAPI）
+echo "[11] PDF生成..."
 curl -s -X POST ${BASE_URL}/api/reports/generate \
   -H "Content-Type: application/json" \
   -b $COOKIE_JAR \

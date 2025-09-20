@@ -213,9 +213,8 @@ class DashboardScreen {
             
             const now = new Date();
             const diffMs = now - clockIn;
-            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-            const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            workingTimeElement.textContent = `${diffHours}時間${diffMinutes}分`;
+            const diffMinutes = Math.floor(diffMs / (1000 * 60));
+            workingTimeElement.textContent = TimeUtils.formatMinutesToTime(diffMinutes);
         }
     }
 
@@ -292,18 +291,15 @@ class DashboardScreen {
 
         // ステータス表示
         let statusText = '未出勤';
-        let statusClass = 'bg-secondary';
 
         if (data && data.clockInTime && !data.clockOutTime) {
             statusText = '出勤中';
-            statusClass = 'bg-success';
         } else if (data && data.clockInTime && data.clockOutTime) {
             statusText = '退勤済み';
-            statusClass = 'bg-primary';
         }
 
-        console.log('Setting status:', statusText, statusClass);
-        this.clockStatus.innerHTML = `<span class="badge ${statusClass} fs-6">${statusText}</span>`;
+        console.log('Setting status:', statusText);
+        this.clockStatus.innerHTML = statusText;
 
         // 出勤時刻表示
         const clockInTimeElement = document.getElementById('clockInTime');
@@ -353,35 +349,15 @@ class DashboardScreen {
         const workingTimeElement = document.getElementById('workingTime');
         if (workingTimeElement) {
             if (data && data.clockInTime && data.clockOutTime) {
-                try {
-                    const clockIn = new Date(data.clockInTime);
-                    const clockOut = new Date(data.clockOutTime);
-                    const diffMs = clockOut - clockIn;
-                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                    workingTimeElement.textContent = `${diffHours}時間${diffMinutes}分`;
-                    console.log('Working time set to:', `${diffHours}時間${diffMinutes}分`);
-                } catch (error) {
-                    console.error('Error calculating working time:', error);
-                    workingTimeElement.textContent = '0時間0分';
-                }
+                workingTimeElement.textContent = TimeUtils.calculateWorkingTime(data.clockInTime, data.clockOutTime);
+                console.log('Working time set to:', TimeUtils.calculateWorkingTime(data.clockInTime, data.clockOutTime));
             } else if (data && data.clockInTime) {
                 // 出勤済みだが退勤していない場合
-                try {
-                    const clockIn = new Date(data.clockInTime);
-                    const now = new Date();
-                    const diffMs = now - clockIn;
-                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                    workingTimeElement.textContent = `${diffHours}時間${diffMinutes}分`;
-                    console.log('Working time (in progress) set to:', `${diffHours}時間${diffMinutes}分`);
-                } catch (error) {
-                    console.error('Error calculating working time (in progress):', error);
-                    workingTimeElement.textContent = '0時間0分';
-                }
+                workingTimeElement.textContent = TimeUtils.calculateElapsedTime(data.clockInTime);
+                console.log('Working time (in progress) set to:', TimeUtils.calculateElapsedTime(data.clockInTime));
             } else {
-                workingTimeElement.textContent = '0時間0分';
-                console.log('No working time, set to 0時間0分');
+                workingTimeElement.textContent = '0:00';
+                console.log('No working time, set to 0:00');
             }
         } else {
             console.log('workingTimeElement not found');
@@ -401,29 +377,29 @@ class DashboardScreen {
         if (data && data.clockInTime && !data.clockOutTime) {
             // 出勤済み・退勤未済の場合
             this.clockInBtn.disabled = true;
-            this.clockInBtn.innerHTML = '<i class="fas fa-check me-2"></i>出勤済み';
+            this.clockInBtn.innerHTML = '出勤済み';
             this.clockInBtn.className = 'btn btn-secondary btn-lg me-3 clock-btn';
             
             this.clockOutBtn.disabled = false;
-            this.clockOutBtn.innerHTML = '<i class="fas fa-sign-out-alt me-2"></i>退勤打刻';
+            this.clockOutBtn.innerHTML = '退勤打刻';
             this.clockOutBtn.className = 'btn btn-danger btn-lg clock-btn';
         } else if (data && data.clockInTime && data.clockOutTime) {
             // 出勤済み・退勤済みの場合
             this.clockInBtn.disabled = true;
-            this.clockInBtn.innerHTML = '<i class="fas fa-check me-2"></i>出勤済み';
+            this.clockInBtn.innerHTML = '出勤済み';
             this.clockInBtn.className = 'btn btn-secondary btn-lg me-3 clock-btn';
             
             this.clockOutBtn.disabled = true;
-            this.clockOutBtn.innerHTML = '<i class="fas fa-check me-2"></i>退勤済み';
+            this.clockOutBtn.innerHTML = '退勤済み';
             this.clockOutBtn.className = 'btn btn-secondary btn-lg clock-btn';
         } else {
             // 未出勤の場合
             this.clockInBtn.disabled = false;
-            this.clockInBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>出勤打刻';
+            this.clockInBtn.innerHTML = '出勤打刻';
             this.clockInBtn.className = 'btn btn-success btn-lg me-3 clock-btn';
             
             this.clockOutBtn.disabled = true;
-            this.clockOutBtn.innerHTML = '<i class="fas fa-sign-out-alt me-2"></i>退勤打刻';
+            this.clockOutBtn.innerHTML = '退勤打刻';
             this.clockOutBtn.className = 'btn btn-secondary btn-lg clock-btn';
         }
     }
@@ -473,13 +449,14 @@ class DashboardScreen {
             const clockOut = new Date(date);
             clockOut.setHours(18, Math.floor(Math.random() * 60), 0, 0);
 
-            const workingHours = Math.round((clockOut - clockIn) / (1000 * 60 * 60) * 10) / 10;
+            const diffMinutes = Math.floor((clockOut - clockIn) / (1000 * 60));
+            const workingHours = TimeUtils.formatMinutesToTime(diffMinutes);
 
             data.push({
                 attendanceDate: date.toISOString().split('T')[0],
                 clockInTime: clockIn.toISOString(),
                 clockOutTime: clockOut.toISOString(),
-                workingHours: workingHours + 'h',
+                workingHours: workingHours,
                 status: i === 0 ? '出勤中' : '退勤済み'
             });
         }
@@ -511,26 +488,18 @@ class DashboardScreen {
                 new Date(record.clockOutTime).toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}) : '-';
 
             // 勤務時間計算
-            let workingHours = '-';
+            let workingHours = '0:00';
             if (record.clockInTime && record.clockOutTime) {
-                const clockIn = new Date(record.clockInTime);
-                const clockOut = new Date(record.clockOutTime);
-                const diffMs = clockOut - clockIn;
-                const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                workingHours = `${diffHours}h ${diffMinutes}m`;
+                workingHours = TimeUtils.calculateWorkingTime(record.clockInTime, record.clockOutTime);
             }
 
             // ステータス表示
             let statusText = '未出勤';
-            let statusClass = 'bg-secondary';
 
             if (record.clockInTime && !record.clockOutTime) {
                 statusText = '出勤中';
-                statusClass = 'bg-success';
             } else if (record.clockInTime && record.clockOutTime) {
                 statusText = '退勤済み';
-                statusClass = 'bg-primary';
             }
 
             row.innerHTML = `
@@ -538,7 +507,7 @@ class DashboardScreen {
                 <td>${clockInTime}</td>
                 <td>${clockOutTime}</td>
                 <td>${workingHours}</td>
-                <td><span class="badge ${statusClass}">${statusText}</span></td>
+                <td>${statusText}</td>
             `;
             this.attendanceHistory.appendChild(row);
         });
